@@ -1,9 +1,23 @@
-# cortex-mcp
+<p align="center">
+  <img src="docs/assets/cortex-mcp-banner.jpg" alt="cortex-mcp banner">
+</p>
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B-green?logo=node.js)](https://nodejs.org/)
-[![MCP](https://img.shields.io/badge/MCP-1.x-purple)](https://modelcontextprotocol.io/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<h1 align="center">cortex-mcp</h1>
+
+<p align="center">
+  <strong>MCP server for Cortex observable analysis and response automation.</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/github/actions/workflow/status/solomonneas/cortex-mcp/ci.yml?branch=main&style=for-the-badge&label=CI&logo=githubactions&logoColor=white" alt="CI status">
+  <img src="https://img.shields.io/npm/v/thehive-cortex-mcp?style=for-the-badge&logo=npm&logoColor=white" alt="npm version">
+  <img src="https://img.shields.io/badge/typescript-6.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript 6.0">
+  <img src="https://img.shields.io/badge/node.js-20%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js 20+">
+  <img src="https://img.shields.io/badge/MCP-SDK_1.29-7c3aed?style=for-the-badge" alt="MCP SDK 1.29">
+  <img src="https://img.shields.io/badge/Cortex-observable_analysis-52c7c9?style=for-the-badge" alt="Cortex observable analysis">
+  <img src="https://img.shields.io/badge/Vitest-4-6E9F18?style=for-the-badge&logo=vitest&logoColor=white" alt="Vitest 4">
+  <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT License">
+</p>
 
 An MCP (Model Context Protocol) server for [Cortex](https://docs.strangebee.com/cortex/) by StrangeBee/TheHive Project. Cortex automates observable analysis (IPs, URLs, hashes, domains, emails, files) using analyzers and executes response actions via responders. This MCP server exposes Cortex's full analysis and administration pipeline to LLMs.
 
