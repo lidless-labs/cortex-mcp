@@ -13,10 +13,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/npm/v/thehive-cortex-mcp?style=for-the-badge&logo=npm&label=npm" alt="npm version">
-  <img src="https://img.shields.io/github/actions/workflow/status/lidless-labs/cortex-mcp/ci.yml?branch=main&style=for-the-badge&label=ci" alt="CI status">
-  <img src="https://img.shields.io/badge/MCP-server-8A2BE2?style=for-the-badge" alt="MCP server">
-  <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT License">
+  <img src="https://shieldcn.dev/npm/thehive-cortex-mcp.svg" alt="npm version">
+  <img src="https://shieldcn.dev/github/ci/lidless-labs/cortex-mcp.svg?branch=main&workflow=ci.yml" alt="CI status">
+  <img src="https://shieldcn.dev/badge/MCP-server-8A2BE2.svg" alt="MCP server">
+  <img src="https://shieldcn.dev/badge/license-MIT-green.svg" alt="MIT License">
 </p>
 
 cortex-mcp is a Model Context Protocol (MCP) server for [Cortex](https://docs.strangebee.com/cortex/), the observable analysis and active-response engine from StrangeBee/TheHive Project. It exists because analysts already drive Cortex by hand through its web UI or raw REST API, and an AI client can do that work faster: detonate an indicator across every applicable analyzer, aggregate the taxonomy verdicts, and pull artifacts without anyone clicking through a dozen jobs. It differs from a generic HTTP bridge by exposing Cortex's real domain model as 31 typed MCP tools, auto-detecting observable data types, fanning out analysis with a cap, and gating every destructive action (responders, deletes, file reads) behind explicit confirmation.
