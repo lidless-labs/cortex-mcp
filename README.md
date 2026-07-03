@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/cortex-mcp-banner.jpg" alt="cortex-mcp banner" width="900">
+  <img src="docs/assets/cortex-mcp-social-preview.jpg" alt="cortex-mcp banner" width="900">
 </p>
 
 <h1 align="center">cortex-mcp</h1>
@@ -13,8 +13,8 @@
 </p>
 
 <p align="center">
-  <img src="https://shieldcn.dev/npm/thehive-cortex-mcp.svg" alt="npm version">
   <img src="https://shieldcn.dev/github/ci/lidless-labs/cortex-mcp.svg?branch=main&workflow=ci.yml" alt="CI status">
+  <img src="https://shieldcn.dev/npm/thehive-cortex-mcp.svg" alt="npm version">
   <img src="https://shieldcn.dev/badge/MCP-server-8A2BE2.svg" alt="MCP server">
   <img src="https://shieldcn.dev/badge/license-MIT-green.svg" alt="MIT License">
 </p>
