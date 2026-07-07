@@ -19,11 +19,11 @@
   <img src="https://shieldcn.dev/badge/license-MIT-green.svg" alt="MIT License">
 </p>
 
-cortex-mcp is a Model Context Protocol (MCP) server for [Cortex](https://docs.strangebee.com/cortex/), the observable analysis and active-response engine from StrangeBee/TheHive Project. It exists because analysts already drive Cortex by hand through its web UI or raw REST API, and an AI client can do that work faster: detonate an indicator across every applicable analyzer, aggregate the taxonomy verdicts, and pull artifacts without anyone clicking through a dozen jobs. It differs from a generic HTTP bridge by exposing Cortex's real domain model as 31 typed MCP tools, auto-detecting observable data types, fanning out analysis with a cap, and gating every destructive action (responders, deletes, file reads) behind explicit confirmation.
+cortexctrl is a control CLI for [Cortex](https://docs.strangebee.com/cortex/), the observable analysis and active-response engine from StrangeBee/TheHive Project. The same package ships `cortex-mcp`, a Model Context Protocol (MCP) adapter. It exists because analysts already drive Cortex by hand through its web UI or raw REST API, and an AI client can do that work faster: detonate an indicator across every applicable analyzer, aggregate the taxonomy verdicts, and pull artifacts without anyone clicking through a dozen jobs. It differs from a generic HTTP bridge by exposing Cortex's real domain model as 31 typed MCP tools, auto-detecting observable data types, fanning out analysis with a cap, and gating every destructive action (responders, deletes, file reads) behind explicit confirmation.
 
 ## What it does
 
-cortex-mcp connects an MCP-capable AI client (Claude Desktop, Claude Code, Codex CLI, OpenClaw, Hermes, and others) to a running Cortex instance so the model can perform real observable analysis and threat-intelligence enrichment. Cortex is the analyzer/responder engine in the StrangeBee and TheHive SOAR stack: it runs analyzers against observables (IPs, domains, URLs, file hashes, emails, files) and executes responders against TheHive entities. This server speaks Cortex's REST API and projects the full pipeline as MCP tools, resources, and prompts, so an agent can browse analyzer definitions, enable and configure them, submit observables, wait for job reports, extract IOC artifacts, and triage alerts. Auto-detection classifies an observable's data type before analysis, bulk analysis fans out across applicable analyzers and aggregates the taxonomy results, and superadmin tools cover organization and user/API-key management. The result is conversational observable analysis: ask "what does Cortex think of `185.220.101.42`?" and get an aggregated multi-analyzer verdict back.
+cortexctrl and cortex-mcp connect operators and MCP-capable AI clients (Claude Desktop, Claude Code, Codex CLI, OpenClaw, Hermes, and others) to a running Cortex instance so they can perform observable analysis and threat-intelligence enrichment. Cortex is the analyzer/responder engine in the StrangeBee and TheHive SOAR stack: it runs analyzers against observables (IPs, domains, URLs, file hashes, emails, files) and executes responders against TheHive entities. The MCP adapter speaks Cortex's REST API and projects the full pipeline as MCP tools, resources, and prompts, so an agent can browse analyzer definitions, enable and configure them, submit observables, wait for job reports, extract IOC artifacts, and triage alerts. The CLI starts with status, analyzer inventory, single-analyzer observable submission, and job lookup for shells, cron, and CI.
 
 ## Prerequisites
 
@@ -66,6 +66,20 @@ Add this to your MCP client config (this example is Claude Desktop's `claude_des
 
 The npm package is named [`thehive-cortex-mcp`](https://www.npmjs.com/package/thehive-cortex-mcp); it installs a `cortex-mcp` binary. Set `CORTEX_SUPERADMIN_KEY` only if you want the organization and user management tools.
 
+## CLI
+
+The package ships `cortexctrl` for shells, cron, and CI. Compatibility alias `cortexctl` points at the same binary, and `cortex-mcp` remains the MCP stdio adapter.
+
+```bash
+cortexctrl status --json
+cortexctrl analyzers list --data-type ip
+cortexctrl analyzers run AbuseIPDB_1_0 --data-type ip --data 8.8.8.8
+cortexctrl jobs get job_123
+cortexctrl mcp
+```
+
+`cortexctrl` reads the same environment as the MCP adapter: `CORTEX_URL`, `CORTEX_API_KEY`, optional `CORTEX_SUPERADMIN_KEY`, optional `CORTEX_VERIFY_SSL`, and optional timeout and safety flags. File-path submission stays confined to `CORTEX_FILE_BASE_DIR` and is not exposed in this first CLI slice. Future responder and delete commands must require `CORTEX_ALLOW_DESTRUCTIVE=1` plus `--confirm --destructive`. Fanout remains opt-in in MCP and is intentionally not exposed here yet.
+
 ## Usage
 
 ### Claude Code
@@ -99,7 +113,7 @@ If you are running from a source checkout instead, point `command`/`args` at the
 ```bash
 openclaw mcp set cortex '{
   "command": "node",
-  "args": ["/absolute/path/to/cortex-mcp/dist/index.js"],
+  "args": ["/absolute/path/to/cortex-mcp/dist/mcp-bin.js"],
   "env": {
     "CORTEX_URL": "http://cortex.example.com:9001",
     "CORTEX_API_KEY": "your-org-admin-key",
