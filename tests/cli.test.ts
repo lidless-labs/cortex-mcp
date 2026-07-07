@@ -42,9 +42,9 @@ describe("cortexctrl CLI", () => {
     expect(HELP).toContain("cortexctrl - Cortex observable-analysis control CLI");
     expect(HELP).toContain("alias: cortexctl");
     expect(packageJson.bin).toMatchObject({
-      cortexctrl: "./dist/cli.js",
-      cortexctl: "./dist/cli.js",
-      "cortex-mcp": "./dist/mcp-bin.js",
+      cortexctrl: "dist/cli.js",
+      cortexctl: "dist/cli.js",
+      "cortex-mcp": "dist/mcp-bin.js",
     });
   });
 
