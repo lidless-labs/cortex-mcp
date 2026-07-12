@@ -1,0 +1,28 @@
+{
+  "kicker": "CORTEX-MCP · OBSERVABLE ANALYSIS",
+  "title": "submit one observable, collect the verdicts",
+  "subtitle": "The server classifies the observable, fans out across matching analyzers, polls Cortex jobs, and returns taxonomy plus artifacts.",
+  "footer": "typed tools · analyzer fan-out · responder gates",
+  "lanes": [
+    { "id": "input", "label": "OBSERVABLE" },
+    { "id": "cortex", "label": "CORTEX" },
+    { "id": "jobs", "label": "JOBS" },
+    { "id": "result", "label": "RESULT" }
+  ],
+  "nodes": [
+    { "id": "observable", "lane": "input", "row": 0, "title": "IP, domain, hash", "meta": "auto-detect data type", "status": "source" },
+    { "id": "analyzers", "lane": "cortex", "row": 0, "title": "match analyzers", "meta": "enabled and applicable" },
+    { "id": "submit", "lane": "cortex", "row": 1, "title": "submit analysis", "meta": "bounded fan-out" },
+    { "id": "poll", "lane": "jobs", "row": 0, "title": "poll jobs", "meta": "reports and artifacts", "status": "focus" },
+    { "id": "gate", "lane": "jobs", "row": 1, "title": "responder gate", "meta": "confirm before action", "status": "gate" },
+    { "id": "verdict", "lane": "result", "row": 0, "title": "aggregate verdict", "meta": "taxonomy, IOCs, next steps" }
+  ],
+  "edges": [
+    { "from": "observable", "to": "analyzers" },
+    { "from": "analyzers", "to": "submit" },
+    { "from": "submit", "to": "poll" },
+    { "from": "poll", "to": "gate" },
+    { "from": "poll", "to": "verdict" },
+    { "from": "gate", "to": "verdict" }
+  ]
+}

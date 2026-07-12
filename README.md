@@ -25,6 +25,10 @@ cortex-mcp is a Model Context Protocol (MCP) server for [Cortex](https://docs.st
 
 cortex-mcp connects an MCP-capable AI client (Claude Desktop, Claude Code, Codex CLI, OpenClaw, Hermes, and others) to a running Cortex instance so the model can perform real observable analysis and threat-intelligence enrichment. Cortex is the analyzer/responder engine in the StrangeBee and TheHive SOAR stack: it runs analyzers against observables (IPs, domains, URLs, file hashes, emails, files) and executes responders against TheHive entities. This server speaks Cortex's REST API and projects the full pipeline as MCP tools, resources, and prompts, so an agent can browse analyzer definitions, enable and configure them, submit observables, wait for job reports, extract IOC artifacts, and triage alerts. Auto-detection classifies an observable's data type before analysis, bulk analysis fans out across applicable analyzers and aggregates the taxonomy results, and superadmin tools cover organization and user/API-key management. The result is conversational observable analysis: ask "what does Cortex think of `185.220.101.42`?" and get an aggregated multi-analyzer verdict back.
 
+![cortex-mcp observable analysis workflow: an observable is classified, matched to Cortex analyzers, submitted as jobs, polled for reports, then aggregated into a verdict with responder actions gated](docs/assets/observable-analysis-workflow.svg)
+
+Generated from [`docs/assets/workflows/observable-analysis.json`](docs/assets/workflows/observable-analysis.json) with the [Lidless fleet-kit workflow renderer](https://github.com/lidless-labs/lidless-fleet-kit/tree/main/workflow).
+
 ## Prerequisites
 
 - Node.js 20 or later
