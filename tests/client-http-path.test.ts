@@ -160,6 +160,129 @@ describe("CortexClient HTTP request path (offline)", () => {
         },
       );
     });
+
+    it("maps undici fetch abort to a public timeout error for POST text endpoints", async () => {
+      const timeoutMs = 80;
+
+      await withMockCortex(
+        {
+          "/api/user/test-user/key/renew": (req, res) => {
+            scheduleDelayedWrite(req, res, 250, () =>
+              text(res, 200, "renewed-key-value"),
+            );
+          },
+        },
+        async ({ baseUrl }) => {
+          const client = new CortexClient(baseConfig(baseUrl, timeoutMs));
+
+          await expect(client.renewUserKey("test-user")).rejects.toThrow(
+            `Cortex API timeout after ${timeoutMs}ms`,
+          );
+        },
+      );
+    });
+
+    it("maps undici fetch abort to a public timeout error for multipart uploads", async () => {
+      const timeoutMs = 80;
+
+      await withMockCortex(
+        {
+          "/api/analyzer/test-analyzer/run": (req, res) => {
+            scheduleDelayedWrite(req, res, 250, () =>
+              json(res, 200, { id: "job-1", status: "Waiting" }),
+            );
+          },
+        },
+        async ({ baseUrl }) => {
+          const client = new CortexClient(baseConfig(baseUrl, timeoutMs));
+
+          await expect(
+            client.runAnalyzerWithFile(
+              "test-analyzer",
+              {
+                content: Buffer.from("sample"),
+                filename: "sample.txt",
+                contentType: "text/plain",
+              },
+              { tlp: 2, pap: 2 },
+            ),
+          ).rejects.toThrow(`Cortex API timeout after ${timeoutMs}ms`);
+        },
+      );
+    });
+  });
+
+  describe("abort semantics", () => {
+    it("cancels a delayed server write when the client timeout aborts the fetch", async () => {
+      const timeoutMs = 80;
+      let delayedWriteRan = false;
+
+      await withMockCortex(
+        {
+          "/api/status": (req, res) => {
+            scheduleDelayedWrite(req, res, 250, () => {
+              delayedWriteRan = true;
+              json(res, 200, { versions: { Cortex: "3.1.0" } });
+            });
+          },
+        },
+        async ({ baseUrl }) => {
+          const client = new CortexClient(baseConfig(baseUrl, timeoutMs));
+
+          await expect(client.getStatus()).rejects.toThrow(
+            `Cortex API timeout after ${timeoutMs}ms`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          expect(delayedWriteRan).toBe(false);
+        },
+      );
+    });
+
+    it("does not complete a delayed response after the client aborts", async () => {
+      const timeoutMs = 80;
+      let responseFinished = false;
+
+      await withMockCortex(
+        {
+          "/api/status": (req, res) => {
+            res.once("finish", () => {
+              responseFinished = true;
+            });
+            scheduleDelayedWrite(req, res, 250, () =>
+              json(res, 200, { versions: { Cortex: "3.1.0" } }),
+            );
+          },
+        },
+        async ({ baseUrl }) => {
+          const client = new CortexClient(baseConfig(baseUrl, timeoutMs));
+
+          await expect(client.getStatus()).rejects.toThrow(
+            `Cortex API timeout after ${timeoutMs}ms`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          expect(responseFinished).toBe(false);
+        },
+      );
+    });
+
+    it("returns the response when the server answers before the timeout", async () => {
+      await withMockCortex(
+        {
+          "/api/status": (_req, res) => {
+            json(res, 200, {
+              versions: { Cortex: "3.1.0" },
+              config: { authType: ["key"], capabilities: [] },
+            });
+          },
+        },
+        async ({ baseUrl }) => {
+          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+
+          const status = await client.getStatus();
+          expect(status.versions.Cortex).toBe("3.1.0");
+        },
+      );
+    });
   });
 
   describe("public HTTP error mapping (request)", () => {
@@ -190,6 +313,42 @@ describe("CortexClient HTTP request path (offline)", () => {
         );
       },
     );
+
+    it("maps status-specific errors without appending a body suffix when empty", async () => {
+      await withMockCortex(
+        {
+          "/api/analyzer": (_req, res) => {
+            res.writeHead(401);
+            res.end();
+          },
+        },
+        async ({ baseUrl }) => {
+          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+
+          await expect(client.listAnalyzers()).rejects.toThrow(
+            "Cortex API error: Invalid API key or unauthorized access",
+          );
+        },
+      );
+    });
+
+    it("returns undefined for successful DELETE with empty body", async () => {
+      await withMockCortex(
+        {
+          "/api/analyzer/to-delete": (_req, res) => {
+            res.writeHead(204);
+            res.end();
+          },
+        },
+        async ({ baseUrl }) => {
+          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+
+          await expect(
+            client.deleteAnalyzer("to-delete"),
+          ).resolves.toBeUndefined();
+        },
+      );
+    });
 
     it("maps unknown status codes with status text and response body", async () => {
       await withMockCortex(
@@ -253,6 +412,24 @@ describe("CortexClient HTTP request path (offline)", () => {
   });
 
   describe("public HTTP error mapping (requestText)", () => {
+    it("maps non-ok text responses without a body suffix when empty", async () => {
+      await withMockCortex(
+        {
+          "/api/user/test-user/key": (_req, res) => {
+            res.writeHead(403);
+            res.end();
+          },
+        },
+        async ({ baseUrl }) => {
+          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+
+          await expect(client.getUserKey("test-user")).rejects.toThrow(
+            "Cortex API error: HTTP 403",
+          );
+        },
+      );
+    });
+
     it("maps non-ok text responses to Cortex API error with status and body", async () => {
       await withMockCortex(
         {
@@ -285,6 +462,61 @@ describe("CortexClient HTTP request path (offline)", () => {
           expect(requests[0].headers.authorization).toBe(
             "Bearer superadmin-key",
           );
+        },
+      );
+    });
+  });
+
+  describe("public HTTP error mapping (runAnalyzerWithFile)", () => {
+    it("maps non-ok multipart responses to Cortex API error with status and body", async () => {
+      await withMockCortex(
+        {
+          "/api/analyzer/test-analyzer/run": (_req, res) => {
+            text(res, 400, "invalid attachment");
+          },
+        },
+        async ({ baseUrl }) => {
+          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+
+          await expect(
+            client.runAnalyzerWithFile(
+              "test-analyzer",
+              {
+                content: Buffer.from("sample"),
+                filename: "sample.txt",
+                contentType: "text/plain",
+              },
+              { tlp: 2, pap: 2 },
+            ),
+          ).rejects.toThrow(
+            "Cortex API error: HTTP 400 - invalid attachment",
+          );
+        },
+      );
+    });
+
+    it("maps non-ok multipart responses without a body suffix when empty", async () => {
+      await withMockCortex(
+        {
+          "/api/analyzer/test-analyzer/run": (_req, res) => {
+            res.writeHead(500);
+            res.end();
+          },
+        },
+        async ({ baseUrl }) => {
+          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+
+          await expect(
+            client.runAnalyzerWithFile(
+              "test-analyzer",
+              {
+                content: Buffer.from("sample"),
+                filename: "sample.txt",
+                contentType: "text/plain",
+              },
+              { tlp: 2, pap: 2 },
+            ),
+          ).rejects.toThrow("Cortex API error: HTTP 500");
         },
       );
     });
