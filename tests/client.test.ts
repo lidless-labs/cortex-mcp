@@ -1,4 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// Record the options each undici Agent is built with, so tests can check the
+// dispatcher a request was sent through without reaching into undici internals.
+const agentOptions = vi.hoisted(() => new Map<object, unknown>());
+vi.mock("undici", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("undici")>();
+  class RecordingAgent extends actual.Agent {
+    constructor(options?: ConstructorParameters<typeof actual.Agent>[0]) {
+      super(options);
+      agentOptions.set(this, options);
+    }
+  }
+  return { ...actual, Agent: RecordingAgent };
+});
+
 import { CortexClient } from "../src/client.js";
 import type { CortexConfig } from "../src/config.js";
 import type {
@@ -235,6 +250,83 @@ describe("CortexClient", () => {
         expect.anything(),
       );
     });
+
+    it("sends the wait through a reused dispatcher with undici header/body timeouts disabled", async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockImplementation(async () =>
+          new Response(JSON.stringify(mockJobReport), { status: 200 }),
+        );
+
+      await client.waitAndGetReport("AWl2d8x1kDx6FO7wxPBn", 3600);
+      await client.waitAndGetReport("AWl2d8x1kDx6FO7wxPBn", 3600);
+
+      const first = fetchSpy.mock.calls[0][1] as Record<string, unknown>;
+      const second = fetchSpy.mock.calls[1][1] as Record<string, unknown>;
+      expect(first.dispatcher).toBeDefined();
+      expect(second.dispatcher).toBe(first.dispatcher);
+      // undici defaults both to 300 s, which would cut off the default
+      // 300 s wait and anything longer; 0 leaves the abort timer in charge.
+      expect(agentOptions.get(first.dispatcher as object)).toMatchObject({
+        headersTimeout: 0,
+        bodyTimeout: 0,
+      });
+    });
+
+    it("keeps the scoped TLS relaxation on the wait dispatcher when verifySsl is disabled", async () => {
+      const insecureClient = new CortexClient({ ...config, verifySsl: false });
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(mockJobReport), { status: 200 }),
+        );
+
+      await insecureClient.waitAndGetReport("AWl2d8x1kDx6FO7wxPBn", 60);
+
+      const init = fetchSpy.mock.calls[0][1] as Record<string, unknown>;
+      expect(agentOptions.get(init.dispatcher as object)).toMatchObject({
+        headersTimeout: 0,
+        bodyTimeout: 0,
+        connect: { rejectUnauthorized: false },
+      });
+    });
+
+    it.each([
+      // [client timeout ms, requested wait s, expected abort after ms]
+      [30_000, 60, 70_000],
+      [30_000, 1, 30_000],
+    ])(
+      "with a %ims client timeout, a %is wait aborts after %ims",
+      async (clientTimeoutMs, waitSeconds, expectedMs) => {
+        vi.useFakeTimers();
+        try {
+          const waitClient = new CortexClient({ ...config, timeout: clientTimeoutMs });
+          let signal: AbortSignal | undefined;
+          vi.spyOn(globalThis, "fetch").mockImplementation(
+            (_url, init) =>
+              new Promise<Response>((_resolve, reject) => {
+                signal = init?.signal ?? undefined;
+                signal?.addEventListener("abort", () =>
+                  reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+                );
+              }),
+          );
+
+          const pending = waitClient.waitAndGetReport("AWl2d8x1kDx6FO7wxPBn", waitSeconds);
+          const rejection = expect(pending).rejects.toThrow(
+            `Cortex API timeout after ${expectedMs}ms`,
+          );
+
+          await vi.advanceTimersByTimeAsync(expectedMs - 1);
+          expect(signal?.aborted).toBe(false);
+          await vi.advanceTimersByTimeAsync(1);
+          expect(signal?.aborted).toBe(true);
+          await rejection;
+        } finally {
+          vi.useRealTimers();
+        }
+      },
+    );
   });
 
   describe("searchJobs", () => {

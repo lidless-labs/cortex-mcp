@@ -212,6 +212,79 @@ describe("CortexClient HTTP request path (offline)", () => {
     });
   });
 
+  describe("waitreport timeout", () => {
+    const waitReportRoute = "/api/job/job-1/waitreport?atMost=1second";
+    const report = {
+      id: "job-1",
+      status: "Success",
+      report: { summary: { taxonomies: [] }, success: true },
+    };
+
+    it("waits past the client timeout for the requested wait duration", async () => {
+      const timeoutMs = 80;
+
+      await withMockCortex(
+        {
+          [waitReportRoute]: (req, res) => {
+            scheduleDelayedWrite(req, res, 300, () => json(res, 200, report));
+          },
+        },
+        async ({ baseUrl, requests }) => {
+          const client = new CortexClient(baseConfig(baseUrl, timeoutMs));
+
+          const result = await client.waitAndGetReport("job-1", 1);
+          expect(result.status).toBe("Success");
+          expect(requests).toHaveLength(1);
+          expect(requests[0].headers.authorization).toBe("Bearer org-api-key");
+        },
+      );
+    });
+
+    it("waits past the client timeout when verifySsl is disabled", async () => {
+      const timeoutMs = 80;
+
+      await withMockCortex(
+        {
+          [waitReportRoute]: (req, res) => {
+            scheduleDelayedWrite(req, res, 300, () => json(res, 200, report));
+          },
+        },
+        async ({ baseUrl }) => {
+          const client = new CortexClient({
+            ...baseConfig(baseUrl, timeoutMs),
+            verifySsl: false,
+          });
+
+          const result = await client.waitAndGetReport("job-1", 1);
+          expect(result.status).toBe("Success");
+        },
+      );
+    });
+
+    it("keeps the configured client timeout for other requests on the same client", async () => {
+      const timeoutMs = 80;
+
+      await withMockCortex(
+        {
+          [waitReportRoute]: (_req, res) => {
+            json(res, 200, report);
+          },
+          "/api/job/job-1/report": (req, res) => {
+            scheduleDelayedWrite(req, res, 300, () => json(res, 200, report));
+          },
+        },
+        async ({ baseUrl }) => {
+          const client = new CortexClient(baseConfig(baseUrl, timeoutMs));
+
+          await client.waitAndGetReport("job-1", 1);
+          await expect(client.getJobReport("job-1")).rejects.toThrow(
+            `Cortex API timeout after ${timeoutMs}ms`,
+          );
+        },
+      );
+    });
+  });
+
   describe("abort semantics", () => {
     it("cancels a delayed server write when the client timeout aborts the fetch", async () => {
       const timeoutMs = 80;
