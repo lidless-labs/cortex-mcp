@@ -410,9 +410,13 @@ export class CortexClient {
   }
 
   async searchJobs(query: JobSearchQuery): Promise<Job[]> {
-    return this.request<Job[]>("/job/_search", {
+    const params = new URLSearchParams();
+    if (query.range !== undefined) params.set("range", query.range);
+    for (const sort of query.sort ?? []) params.append("sort", sort);
+    const search = params.toString();
+    return this.request<Job[]>(`/job/_search${search ? `?${search}` : ""}`, {
       method: "POST",
-      body: JSON.stringify(query),
+      body: JSON.stringify({ query: query.query ?? {} }),
     }, false, { readOnlySearch: true });
   }
 

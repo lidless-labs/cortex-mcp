@@ -162,10 +162,9 @@ function captureTools(
         name: string,
         _desc: string,
         _schema: unknown,
-        _annotations: unknown,
-        handler: ToolHandler,
+        ...rest: unknown[]
       ) => {
-        tools.set(name, handler);
+        tools.set(name, rest.at(-1) as ToolHandler);
       },
     ),
   } as unknown as McpServer;

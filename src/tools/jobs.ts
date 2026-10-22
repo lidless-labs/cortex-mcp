@@ -168,7 +168,7 @@ export function registerJobTools(
         const query: Record<string, unknown> =
           must.length > 0
             ? { _and: must }
-            : { _field: "status", _value: "*" };
+            : {};
 
         const jobs = await client.searchJobs({
           query,
@@ -346,12 +346,13 @@ export function registerJobTools(
         const query: Record<string, unknown> =
           must.length > 0
             ? must.length === 1 ? must[0] : { _and: must }
-            : { _field: "status", _value: "*" };
+            : {};
 
         const jobs = await client.searchJobs({
           query,
           range: `0-${limit}`,
-          sort: ["-createdAt"],
+          // The age cutoff is applied locally, so the window must hold the oldest jobs.
+          sort: [olderThanDays ? "+createdAt" : "-createdAt"],
         });
 
         let matchingJobs = jobs.slice(0, limit);

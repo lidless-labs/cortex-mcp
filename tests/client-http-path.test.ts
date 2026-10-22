@@ -9,6 +9,9 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { AddressInfo, type Socket } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { CortexClient } from "../src/client.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { registerJobTools } from "../src/tools/jobs.js";
+import { registerResources } from "../src/resources.js";
 import type { CortexConfig } from "../src/config.js";
 
 type RouteHandler = (
@@ -62,7 +65,7 @@ async function withMockCortex(
   const connections = new Set<Socket>();
   const server = createServer(async (req, res) => {
     requests.push(req);
-    const handler = routes[req.url ?? ""];
+    const handler = routes[req.url ?? ""] ?? routes[(req.url ?? "").split("?")[0]];
     if (!handler) {
       res.writeHead(404);
       res.end("not found");
@@ -597,6 +600,67 @@ describe("CortexClient HTTP request path (offline)", () => {
           expect(status.versions.Cortex).toBe("3.1.0");
         },
       );
+    });
+  });
+});
+
+async function requestBody(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+function handlers(client: CortexClient) {
+  const tools = new Map<string, Function>();
+  const resources = new Map<string, Function>();
+  const server = {
+    tool(...args: any[]) { tools.set(args[0], args.at(-1)); },
+    resource(...args: any[]) { resources.set(args[0], args.at(-1)); },
+  } as unknown as McpServer;
+  registerJobTools(server, client); registerResources(server, client);
+  return { tools, resources };
+}
+
+describe("job search pagination on the wire", () => {
+  it("sends range and repeated sort parameters outside the JSON query", async () => {
+    let body: unknown;
+    await withMockCortex({ "/api/job/_search": async (req, res) => { body = await requestBody(req); json(res, 200, []); } }, async ({ baseUrl, requests }) => {
+      const client = new CortexClient(baseConfig(baseUrl, 5000));
+      const query = { _field: "status", _value: "Success" };
+      await client.searchJobs({ query, range: "0-50", sort: ["-createdAt", "+status"] });
+      const url = new URL(requests[0].url!, baseUrl);
+      expect(url.searchParams.get("range")).toBe("0-50");
+      expect(url.searchParams.getAll("sort")).toEqual(["-createdAt", "+status"]);
+      expect(body).toEqual({ query });
+    });
+  });
+  it.each(["list", "cleanup", "resource"])("uses an empty match-all query for %s and honors its limit", async kind => {
+    let body: unknown;
+    await withMockCortex({ "/api/job/_search": async (req, res) => { body = await requestBody(req); json(res, 200, []); } }, async ({ baseUrl, requests }) => {
+      const { tools, resources } = handlers(new CortexClient(baseConfig(baseUrl, 5000)));
+      if (kind === "list") await tools.get("cortex_list_jobs")!({ limit: 5 });
+      else if (kind === "cleanup") await tools.get("cortex_cleanup_jobs")!({ limit: 5, olderThanDays: 30, dryRun: true });
+      else await resources.get("recent-jobs")!();
+      expect(requests).toHaveLength(1);
+      const url = new URL(requests[0].url!, baseUrl);
+      expect(url.searchParams.get("range")).toBe(kind === "resource" ? "0-50" : "0-5");
+      expect(url.searchParams.getAll("sort")).toEqual([kind === "cleanup" ? "+createdAt" : "-createdAt"]);
+      expect(body).toEqual({ query: {} });
+    });
+  });
+  it("keeps job search available in read-only mode", async () => {
+    await withMockCortex({ "/api/job/_search": (_req, res) => json(res, 200, []) }, async ({ baseUrl, requests }) => {
+      const client = new CortexClient({ ...baseConfig(baseUrl, 5000), mode: "read-only" });
+      await expect(client.searchJobs({ range: "0-5" })).resolves.toEqual([]);
+      expect(requests).toHaveLength(1);
+    });
+  });
+  it("omits absent paging options and sends an empty query by default", async () => {
+    let body: unknown;
+    await withMockCortex({ "/api/job/_search": async (req, res) => { body = await requestBody(req); json(res, 200, []); } }, async ({ baseUrl, requests }) => {
+      await new CortexClient(baseConfig(baseUrl, 5000)).searchJobs({});
+      expect(requests[0].url).toBe("/api/job/_search");
+      expect(body).toEqual({ query: {} });
     });
   });
 });

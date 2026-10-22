@@ -21,6 +21,8 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   CI actions are pinned and tag publishing uses OIDC with provenance.
 - Invalid timeout, base URL, SSL-verification and fanout settings fail at startup
   with the variable name in the error. Existing defaults are unchanged.
+- Job searches send pagination and sorting in URL query parameters. Unfiltered
+  job listing, cleanup previews and the recent-jobs resource use an empty query.
 
 - CI now fails when `npm test` fails. The test step no longer sets
   `continue-on-error`, so a failing suite blocks the tag-triggered npm publish
