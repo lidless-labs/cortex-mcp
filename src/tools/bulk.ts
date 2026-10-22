@@ -281,6 +281,8 @@ export function registerBulkTools(
         };
 
         return {
+          isError: (submitted.length === 0 && failed.length > 0) ||
+            (reports.length > 0 && reports.every(result => result.status === "rejected")),
           content: [
             {
               type: "text" as const,

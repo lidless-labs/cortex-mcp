@@ -239,20 +239,20 @@ describe.skipIf(!shouldRun)("Integration: Live Cortex Instance", () => {
       expect(org.name).toBeDefined();
     });
 
-    it("should update an organization", async () => {
+    it.skipIf(!mutationTestsAuthorized)("should update an organization", async () => {
       const orgs = await client.listOrganizations();
-      const target = orgs.find((o) => o.name === "Neas") ?? orgs[0];
+      expect(orgs.length).toBeGreaterThan(0);
+      const target = orgs[0];
       const originalDesc = target.description;
 
-      const updated = await client.updateOrganization(target.id, {
-        description: "Integration test update",
-      });
-      expect(updated.description).toBe("Integration test update");
-
-      // Restore original
-      await client.updateOrganization(target.id, {
-        description: originalDesc,
-      });
+      try {
+        const updated = await client.updateOrganization(target.id, {
+          description: "Example integration update",
+        });
+        expect(updated.description).toBe("Example integration update");
+      } finally {
+        await client.updateOrganization(target.id, { description: originalDesc });
+      }
     });
   });
 

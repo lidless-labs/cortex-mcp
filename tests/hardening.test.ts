@@ -5,6 +5,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerUserTools } from "../src/tools/users.js";
 import { registerOrganizationTools } from "../src/tools/organizations.js";
 import { registerResponderDefinitionTools } from "../src/tools/responder-definitions.js";
+import { registerBulkTools } from "../src/tools/bulk.js";
 import { registerJobTools } from "../src/tools/jobs.js";
 import { registerAnalyzerDefinitionTools } from "../src/tools/analyzer-definitions.js";
 import { registerAnalyzerTools } from "../src/tools/analyzers.js";
@@ -272,4 +273,22 @@ it("preserves credential-presence flags while omitting credential values", async
   const result = await capture(registerUserTools, client).handlers.get("cortex_list_users")!({});
   expect(result.content[0].text).toContain('"hasKey":true');
   expect(result.content[0].text).toContain('"hasPassword":false');
+});
+
+it("reports a read-only refusal through the bulk analysis handler", async () => {
+  const client = new CortexClient(config);
+  vi.spyOn(client, "listAnalyzers").mockResolvedValue([{ id: "example", name: "example", version: "1", description: "example", dataTypeList: ["hash"] }]);
+  const result = await capture(registerBulkTools, client).handlers.get("cortex_analyze_observable")!({ data: "a".repeat(64), dataType: "hash", fanOut: true, tlp: 2, pap: 2, timeout: 1 });
+  expect(result.isError).toBe(true);
+  expect(result.content[0].text).toContain("CORTEX_MODE=write");
+});
+
+it("reports an error when every bulk report request fails", async () => {
+  const client = new CortexClient({ ...config, mode: "write" });
+  vi.spyOn(client, "listAnalyzers").mockResolvedValue([{ id: "example", name: "example", version: "1", description: "example", dataTypeList: ["hash"] }]);
+  vi.spyOn(client, "runAnalyzer").mockResolvedValue({ id: "example", status: "Waiting" });
+  vi.spyOn(client, "waitAndGetReport").mockRejectedValue(new Error("Example report failure"));
+  const result = await capture(registerBulkTools, client).handlers.get("cortex_analyze_observable")!({ data: "a".repeat(64), dataType: "hash", fanOut: true, tlp: 2, pap: 2, timeout: 1 });
+  expect(result.isError).toBe(true);
+  expect(result.content[0].text).toContain("Example report failure");
 });
