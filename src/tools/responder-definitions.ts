@@ -1,4 +1,4 @@
-import { formatCortexData } from "../safety.js";
+import { formatCortexData, boundedJsonValue } from "../safety.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CortexClient } from "../client.js";
@@ -111,7 +111,8 @@ export function registerResponderDefinitionTools(
         .string().max(65_536)
         .describe("The responder definition ID (e.g., 'Mailer_1_0')"),
       configuration: z
-        .record(z.string().max(65_536), z.unknown())
+        .record(z.string().max(65_536), boundedJsonValue)
+        .refine(value => Object.keys(value).length <= 500, "Too many configuration fields")
         .default({})
         .describe("Configuration key-value pairs. Check cortex_list_responder_definitions for required fields."),
       rate: z

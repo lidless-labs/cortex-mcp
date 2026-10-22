@@ -10,6 +10,7 @@ describe("observable targets", () => {
     `http://${[169, 254, 169, 254].join(".")}/`,
     `http://${[10, 0, 0, 1].join(".")}/`,
     "http://[::1]/", "http://[::ffff:7f00:1]/", "http://[fe80::1]/", "http://[fc00::1]/",
+    "http://[2001::1]/", "http://[3fff::1]/",
     "http://2130706433/", "http://0x7f000001/",
   ])("rejects a nonpublic target %s before submission", async value => {
     const fetch = vi.spyOn(globalThis, "fetch");
@@ -22,6 +23,11 @@ describe("observable targets", () => {
     const fetch = vi.spyOn(globalThis, "fetch");
     await expect(submit(new CortexClient(config), "https://example.com/")).rejects.toThrow("CORTEX_ALLOW_PRIVATE_TARGETS");
     expect(fetch).not.toHaveBeenCalled();
+  });
+  it("rejects special-purpose IPv6 DNS answers", async () => {
+    vi.spyOn(Resolver.prototype, "resolve4").mockResolvedValue([] as never);
+    vi.spyOn(Resolver.prototype, "resolve6").mockResolvedValue(["2001::1", "3fff::1"] as never);
+    await expect(submit(new CortexClient(config), "https://example.com/")).rejects.toThrow("CORTEX_ALLOW_PRIVATE_TARGETS");
   });
   it("fails closed on DNS errors", async () => {
     vi.spyOn(Resolver.prototype, "resolve4").mockRejectedValue(Object.assign(new Error("example"), { code: "ETIMEOUT" }));

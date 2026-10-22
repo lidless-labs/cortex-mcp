@@ -289,12 +289,13 @@ This server can trigger real-world actions and submit observables to third-party
 ### Result and input limits
 
 Responses are limited to 4 MiB while streaming. JSON request bodies are limited to
-1 MiB, and file uploads to 10 MiB. Path-based files must be regular files within
+1 MiB, incoming MCP message lines to 16 MiB before parsing, and file uploads to 10 MiB. Path-based files must be regular files within
 the configured base directory. Text arguments are limited to 65,536 characters,
 with a separate encoded-file limit. Tool and resource data is JSON-quoted inside
 escaped `untrusted_cortex_data` blocks, limited to 64 KiB with a truncation marker.
 Resources use `text/plain` for that envelope. Upstream error bodies and status text
-are omitted. Common credential fields are redacted from structured results.
+are omitted. Credential-bearing configuration and serialized parameters are omitted. Common
+credential fields are redacted from structured results.
 
 ### Credential delivery and worker networking
 
@@ -427,6 +428,10 @@ CORTEX_API_KEY=your-key \
 CORTEX_SUPERADMIN_KEY=your-superadmin-key \
 npx vitest run tests/integration.test.ts
 ```
+
+Live lifecycle tests also require `CORTEX_TEST_MUTATIONS=true`, `CORTEX_MODE=write`
+and `CORTEX_ALLOW_DESTRUCTIVE=1`. Use a disposable Cortex instance for these tests.
+They remove the analyzers and responders they create and report cleanup failures.
 
 ## Project Structure
 

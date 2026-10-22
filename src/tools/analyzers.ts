@@ -119,7 +119,13 @@ export function registerAnalyzerTools(
           content: [
             {
               type: "text" as const,
-              text: formatCortexData(analyzer),
+              text: formatCortexData({
+                id: analyzer.id, name: analyzer.name, version: analyzer.version,
+                description: analyzer.description, dataTypeList: analyzer.dataTypeList,
+                rate: analyzer.rate, rateUnit: analyzer.rateUnit,
+                maxTlp: analyzer.maxTlp, maxPap: analyzer.maxPap,
+                workerDefinitionId: analyzer.workerDefinitionId, jobCache: analyzer.jobCache,
+              }),
             },
           ],
         };

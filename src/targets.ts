@@ -1,5 +1,13 @@
 import { Resolver } from "node:dns/promises";
-import { isIP } from "node:net";
+import { BlockList, isIP } from "node:net";
+
+const globalIpv6 = new BlockList();
+globalIpv6.addSubnet("2000::", 3, "ipv6");
+const specialIpv6 = new BlockList();
+specialIpv6.addSubnet("2001::", 23, "ipv6");
+specialIpv6.addSubnet("2001:db8::", 32, "ipv6");
+specialIpv6.addSubnet("2002::", 16, "ipv6");
+specialIpv6.addSubnet("3fff::", 20, "ipv6");
 
 function publicAddress(address: string): boolean {
   if (isIP(address) === 4) {
@@ -12,12 +20,7 @@ function publicAddress(address: string): boolean {
       (a === 203 && b === 0 && c === 113));
   }
   if (isIP(address) !== 6) return false;
-  const normalized = new URL(`http://[${address}]/`).hostname.slice(1, -1).toLowerCase();
-  const prefix = parseInt(normalized.split(":")[0], 16);
-  // Restrict IPv6 to global unicast, excluding special-purpose assignments.
-  return prefix >= 0x2000 && prefix <= 0x3fff &&
-    !/^2001:(?:[01]?[0-9a-f]{1,2}:|db8:)/.test(normalized) &&
-    !normalized.startsWith("2002:");
+  return globalIpv6.check(address, "ipv6") && !specialIpv6.check(address, "ipv6");
 }
 
 /** Submission-time validation supplements the operator's worker egress policy. */

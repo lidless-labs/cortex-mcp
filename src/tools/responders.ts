@@ -1,4 +1,4 @@
-import { formatCortexData } from "../safety.js";
+import { formatCortexData, boundedJsonValue } from "../safety.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CortexClient } from "../client.js";
@@ -69,7 +69,8 @@ export function registerResponderTools(
         .string().max(65_536)
         .describe("The ID of the entity from TheHive"),
       parameters: z
-        .record(z.string().max(65_536), z.unknown())
+        .record(z.string().max(65_536), boundedJsonValue)
+        .refine(value => Object.keys(value).length <= 500, "Too many configuration fields")
         .optional()
         .describe("Optional responder-specific parameters"),
       confirm: z

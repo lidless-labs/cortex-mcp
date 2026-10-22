@@ -6,6 +6,7 @@ import { registerUserTools } from "../src/tools/users.js";
 import { registerOrganizationTools } from "../src/tools/organizations.js";
 import { registerResponderDefinitionTools } from "../src/tools/responder-definitions.js";
 import { registerJobTools } from "../src/tools/jobs.js";
+import { registerAnalyzerDefinitionTools } from "../src/tools/analyzer-definitions.js";
 import { registerAnalyzerTools } from "../src/tools/analyzers.js";
 import { registerPrompts } from "../src/prompts.js";
 import { registerResources } from "../src/resources.js";
@@ -226,4 +227,49 @@ it.each([5, 20])("bounds cleanup count and delete concurrency with limit=%i", as
   const result = await capture(registerJobTools, client).handlers.get("cortex_cleanup_jobs")!({ status: "Failure", dryRun: false, confirm: true, limit });
   expect(result.isError).not.toBe(true); expect(remove).toHaveBeenCalledTimes(limit);
   expect(peak).toBeLessThanOrEqual(5);
+});
+
+it("omits credential-bearing analyzer configuration and serialized job parameters", async () => {
+  const client = new CortexClient(config);
+  vi.spyOn(client, "getAnalyzer").mockResolvedValue({ id: "example", name: "example", version: "1", description: "example", dataTypeList: [], configuration: { key: "example-credential", access_token: "example-token" } });
+  const analyzer = await capture(registerAnalyzerTools, client).handlers.get("cortex_get_analyzer")!({ analyzerId: "example" });
+  expect(JSON.stringify(analyzer)).not.toContain("example-credential");
+  expect(JSON.stringify(analyzer)).not.toContain("example-token");
+  vi.spyOn(client, "getJobReport").mockResolvedValue({ id: "example", status: "Success", parameters: '{"key":"example-parameter-secret"}', report: { full: { access_token: "example-token" } } } as any);
+  const report = await capture(registerJobTools, client).handlers.get("cortex_get_job_report")!({ jobId: "example" });
+  expect(JSON.stringify(report)).not.toContain("example-parameter-secret");
+  expect(JSON.stringify(report)).not.toContain("example-token");
+});
+
+it.each([{ mode: "read-only" as const, allowDestructive: true }, { mode: "write" as const, allowDestructive: false }])("reports cleanup policy refusals before searching: %j", async settings => {
+  const client = new CortexClient({ ...config, ...settings });
+  const search = vi.spyOn(client, "searchJobs").mockResolvedValue([]);
+  const result = await capture(registerJobTools, client).handlers.get("cortex_cleanup_jobs")!({ status: "Failure", dryRun: false, confirm: true, limit: 5 });
+  expect(result.isError).toBe(true); expect(search).not.toHaveBeenCalled();
+});
+
+it("reports an error if every cleanup deletion fails", async () => {
+  const client = new CortexClient({ ...config, mode: "write", allowDestructive: true });
+  vi.spyOn(client, "searchJobs").mockResolvedValue([{ id: "example", status: "Failure" } as any]);
+  vi.spyOn(client, "deleteJob").mockRejectedValue(new Error("example-failure"));
+  const result = await capture(registerJobTools, client).handlers.get("cortex_cleanup_jobs")!({ status: "Failure", dryRun: false, confirm: true, limit: 5 });
+  expect(result.isError).toBe(true); expect(result.content[0].text).toContain("Deletion failed");
+});
+
+it("bounds arbitrary configuration values before invoking a handler", () => {
+  const { metadata } = capture(registerAnalyzerDefinitionTools, new CortexClient(config));
+  const schema = metadata.get("cortex_enable_analyzer").schema.configuration;
+  expect(schema.safeParse({ example: "valid" }).success).toBe(true);
+  expect(schema.safeParse({ example: "x".repeat(65_537) }).success).toBe(false);
+  let nested: unknown = "example";
+  for (let i = 0; i < 30; i++) nested = { example: nested };
+  expect(schema.safeParse({ example: nested }).success).toBe(false);
+});
+
+it("preserves credential-presence flags while omitting credential values", async () => {
+  const client = new CortexClient(config);
+  vi.spyOn(client, "listUsers").mockResolvedValue([{ id: "example", name: "example", organization: "example", roles: ["read"], status: "Active", hasKey: true, hasPassword: false }]);
+  const result = await capture(registerUserTools, client).handlers.get("cortex_list_users")!({});
+  expect(result.content[0].text).toContain('"hasKey":true');
+  expect(result.content[0].text).toContain('"hasPassword":false');
 });

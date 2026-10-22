@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 
@@ -54,7 +55,7 @@ export async function readAnalysisFile(path: string): Promise<Buffer> {
 /** Keep data delimiters separate from escaped, JSON-quoted external values. */
 export function formatCortexData(value: unknown): string {
   let text = JSON.stringify(value, (key, item) =>
-    /^(?:api[-_]?key|password|token|secret|authorization)$/i.test(key) ? "[redacted]" : item,
+    !["hasKey", "hasPassword"].includes(key) && /^(?:configuration|config|parameters|key|.*[-_]?key|.*[-_]?token|.*[-_]?secret|password|authorization|credentials?)$/i.test(key) ? "[redacted]" : item,
   ) ?? "null";
   text = text.replace(/&/g, "\\u0026").replace(/</g, "\\u003c").replace(/>/g, "\\u003e");
   const bytes = Buffer.from(text);
@@ -80,3 +81,19 @@ export function parseResponse<T>(text: string): T {
   try { return JSON.parse(text) as T; }
   catch { throw new Error("Cortex API returned invalid JSON"); }
 }
+
+function boundedJson(value: unknown): boolean {
+  let nodes = 0;
+  function visit(item: unknown, depth: number): boolean {
+    if (++nodes > 5000 || depth > 16) return false;
+    if (item === null || typeof item === "boolean") return true;
+    if (typeof item === "number") return Number.isFinite(item);
+    if (typeof item === "string") return item.length <= 65_536;
+    if (typeof item !== "object") return false;
+    const entries = Object.entries(item);
+    return entries.length <= 500 && entries.every(([key, child]) => key.length <= 65_536 && visit(child, depth + 1));
+  }
+  return visit(value, 0) && Buffer.byteLength(JSON.stringify(value)) <= MAX_REQUEST_BYTES;
+}
+
+export const boundedJsonValue = z.unknown().refine(boundedJson, "Configuration must be bounded JSON");

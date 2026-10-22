@@ -324,6 +324,8 @@ export function registerJobTools(
     async ({ status, olderThanDays, dryRun, limit, confirm }) => {
       try {
         if (!dryRun && !confirm) throw new Error("Job cleanup requires confirm=true when dryRun=false");
+        if (!dryRun && client.settings.mode !== "write") throw new Error("Job cleanup requires CORTEX_MODE=write");
+        if (!dryRun && !client.settings.allowDestructive) throw new Error("Job cleanup requires CORTEX_ALLOW_DESTRUCTIVE=1");
         if (!status && !olderThanDays) {
           return {
             content: [
@@ -398,6 +400,7 @@ export function registerJobTools(
         const failed = results.filter((r) => r.status === "rejected").length;
 
         return {
+          isError: deleted === 0 && failed > 0,
           content: [
             {
               type: "text" as const,
@@ -406,6 +409,8 @@ export function registerJobTools(
                   dryRun: false,
                   deleted,
                   failed,
+                  failures: results.flatMap((result, index) => result.status === "rejected"
+                    ? [{ jobId: matchingJobs[index].id, error: "Deletion failed" }] : []).slice(0, 5),
                   total: matchingJobs.length,
                   message: `Deleted ${deleted}/${matchingJobs.length} jobs.${failed > 0 ? ` ${failed} deletions failed.` : ""}`,
                 },
