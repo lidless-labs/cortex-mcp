@@ -41,6 +41,16 @@ describe("observable targets", () => {
     await expect(submit(new CortexClient(config), "https://example.com/")).resolves.toMatchObject({ id: "example" });
     expect(fetch).toHaveBeenCalledOnce();
   });
+  it.each(["8.8.8.0/24", "2001:4860::/32"])("permits a public CIDR observable %s", async value => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response('{"id":"example"}'));
+    await expect(submit(new CortexClient(config), value, "ip")).resolves.toMatchObject({ id: "example" });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+  it.each(["10.0.0.0/8", "fc00::/7", "8.8.8.0/33", "2001:4860::/129", "8.8.8.0/", "example.com/24"])("rejects an unsafe or malformed CIDR observable %s", async value => {
+    const fetch = vi.spyOn(globalThis, "fetch");
+    await expect(submit(new CortexClient(config), value, "ip")).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it("permits private targets only with operator configuration", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response('{"id":"example"}'));
     await expect(submit(new CortexClient({ ...config, allowPrivateTargets: true }), "http://[::1]/")).resolves.toMatchObject({ id: "example" });

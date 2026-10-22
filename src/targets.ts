@@ -38,6 +38,15 @@ export async function validateObservableTarget(type: string, data: string, allow
   }
   hostname = hostname.replace(/^\[|\]$/g, "");
   if (allowPrivate) return;
+  if (type === "ip") {
+    // CIDR observables are valid IP data: check the base address and prefix length.
+    const cidr = /^([^/]+)\/(\d{1,3})$/.exec(hostname);
+    if (cidr) {
+      const family = isIP(cidr[1]);
+      if (!family || Number(cidr[2]) > (family === 4 ? 32 : 128)) throw new Error("Invalid observable network target");
+      hostname = cidr[1];
+    }
+  }
   if (isIP(hostname)) {
     if (!publicAddress(hostname)) throw new Error("Private or special-purpose targets require CORTEX_ALLOW_PRIVATE_TARGETS=true");
     return;
