@@ -8,6 +8,9 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Invalid timeout, base URL, SSL-verification and fanout settings fail at startup
+  with the variable name in the error. Existing defaults are unchanged.
+
 - CI now fails when `npm test` fails. The test step no longer sets
   `continue-on-error`, so a failing suite blocks the tag-triggered npm publish
   job, which depends on the test job.

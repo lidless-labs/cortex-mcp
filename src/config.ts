@@ -22,10 +22,28 @@ export interface CortexConfig {
   maxFanout: number;
 }
 
+function positiveInteger(name: string, fallback: number, maximum: number, message: string): number {
+  const raw = (process.env[name] ?? String(fallback)).trim();
+  const value = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < 1 || value > maximum) {
+    throw new Error(message);
+  }
+  return value;
+}
+
 export function getConfig(): CortexConfig {
-  const url = process.env.CORTEX_URL;
+  const url = process.env.CORTEX_URL?.trim();
   if (!url) {
     throw new Error("CORTEX_URL environment variable is required");
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+      throw new Error("Invalid URL");
+    }
+  } catch {
+    throw new Error("CORTEX_URL must be an absolute HTTP or HTTPS URL without embedded credentials");
   }
 
   const apiKey = process.env.CORTEX_API_KEY;
@@ -34,8 +52,15 @@ export function getConfig(): CortexConfig {
   }
 
   const superadminKey = process.env.CORTEX_SUPERADMIN_KEY || undefined;
-  const verifySsl = process.env.CORTEX_VERIFY_SSL !== "false";
-  const timeout = parseInt(process.env.CORTEX_TIMEOUT ?? "30", 10) * 1000;
+  const verifySslRaw = (process.env.CORTEX_VERIFY_SSL ?? "true").trim().toLowerCase();
+  if (verifySslRaw !== "true" && verifySslRaw !== "false") {
+    throw new Error("CORTEX_VERIFY_SSL must be true or false");
+  }
+  const verifySsl = verifySslRaw === "true";
+  const timeout = positiveInteger(
+    "CORTEX_TIMEOUT", 30, 300,
+    "CORTEX_TIMEOUT must be a positive integer between 1 and 300 seconds",
+  ) * 1000;
 
   const fileBaseDirRaw = process.env.CORTEX_FILE_BASE_DIR?.trim();
   const fileBaseDir =
@@ -45,9 +70,10 @@ export function getConfig(): CortexConfig {
     process.env.CORTEX_ALLOW_DESTRUCTIVE === "1" ||
     process.env.CORTEX_ALLOW_DESTRUCTIVE === "true";
 
-  const maxFanoutRaw = parseInt(process.env.CORTEX_MAX_FANOUT ?? "10", 10);
-  const maxFanout =
-    Number.isFinite(maxFanoutRaw) && maxFanoutRaw > 0 ? maxFanoutRaw : 10;
+  const maxFanout = positiveInteger(
+    "CORTEX_MAX_FANOUT", 10, Number.MAX_SAFE_INTEGER,
+    "CORTEX_MAX_FANOUT must be a positive integer",
+  );
 
   return {
     url: url.replace(/\/+$/, ""),

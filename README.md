@@ -265,14 +265,14 @@ npx -y thehive-cortex-mcp     # or `npm start` from a source checkout
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `CORTEX_URL` | Yes | - | Cortex base URL (e.g., `http://cortex.example.com:9001`) |
+| `CORTEX_URL` | Yes | - | Absolute HTTP or HTTPS base URL without embedded credentials (e.g., `http://cortex.example.com:9001`) |
 | `CORTEX_API_KEY` | Yes | - | API key for normal operations (org admin level) |
 | `CORTEX_SUPERADMIN_KEY` | No | - | Superadmin API key for org/user/definition management |
-| `CORTEX_VERIFY_SSL` | No | `true` | Set to `false` to skip SSL verification. Applied via a scoped HTTP dispatcher for Cortex requests only; it does **not** disable TLS verification process-wide. |
-| `CORTEX_TIMEOUT` | No | `30` | Request timeout in seconds. Wait-report calls (`cortex_wait_and_get_report`, and `cortex_analyze_observable` while it waits for reports) instead allow their requested `timeout` plus 10 seconds, if that is longer. |
+| `CORTEX_VERIFY_SSL` | No | `true` | Accepts `true` or `false` (case-insensitive). Set to `false` to skip SSL verification. Applied via a scoped HTTP dispatcher for Cortex requests only; it does **not** disable TLS verification process-wide. |
+| `CORTEX_TIMEOUT` | No | `30` | Request timeout as a positive integer from 1 to 300 seconds. Wait-report calls (`cortex_wait_and_get_report`, and `cortex_analyze_observable` while it waits for reports) instead allow their requested `timeout` plus 10 seconds, if that is longer. |
 | `CORTEX_FILE_BASE_DIR` | No | - | Absolute base directory that `cortex_run_analyzer_file` may read files from. `filePath` is confined to this directory (realpath checked to defeat symlink/`..` escapes); paths outside it are refused. When unset, reading files by path is **disabled** and you must submit file content via `fileBase64`. |
 | `CORTEX_ALLOW_DESTRUCTIVE` | No | `0` | Set to `1` (or `true`) to permit running responders (`cortex_run_responder`), which cause real-world side effects. Off by default. Responders also require `confirm=true` per call. |
-| `CORTEX_MAX_FANOUT` | No | `10` | Maximum number of analyzers `cortex_analyze_observable` will submit to in a single call when fanning out. |
+| `CORTEX_MAX_FANOUT` | No | `10` | Positive safe integer from 1 to 9,007,199,254,740,991. Maximum number of analyzers `cortex_analyze_observable` will submit to in a single call when fanning out. Invalid values fail at startup. |
 
 ### Security and safety gates
 
