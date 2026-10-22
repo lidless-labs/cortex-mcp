@@ -6,6 +6,12 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- CI now fails when `npm test` fails. The test step no longer sets
+  `continue-on-error`, so a failing suite blocks the tag-triggered npm publish
+  job, which depends on the test job.
+
 ### Added
 
 - Maintainer-health docs: `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
