@@ -12,6 +12,8 @@ describe("observable targets", () => {
     "http://[::1]/", "http://[::ffff:7f00:1]/", "http://[fe80::1]/", "http://[fc00::1]/",
     "http://[2001::1]/", "http://[3fff::1]/",
     "http://2130706433/", "http://0x7f000001/",
+    `http://${[192, 0, 0, 1].join(".")}/`, `http://${[192, 0, 0, 170].join(".")}/`, `http://${[192, 88, 99, 1].join(".")}/`,
+    `http://${[255, 255, 255, 255].join(".")}/`, `http://${[100, 64, 0, 1].join(".")}/`,
   ])("rejects a nonpublic target %s before submission", async value => {
     const fetch = vi.spyOn(globalThis, "fetch");
     await expect(submit(new CortexClient(config), value)).rejects.toThrow("CORTEX_ALLOW_PRIVATE_TARGETS");

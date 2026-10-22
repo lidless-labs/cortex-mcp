@@ -9,16 +9,15 @@ specialIpv6.addSubnet("2001:db8::", 32, "ipv6");
 specialIpv6.addSubnet("2002::", 16, "ipv6");
 specialIpv6.addSubnet("3fff::", 20, "ipv6");
 
+const specialIpv4 = new BlockList();
+for (const [network, prefix] of [
+  ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16],
+  ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.0.2.0", 24], ["192.88.99.0", 24], ["192.168.0.0", 16],
+  ["198.18.0.0", 15], ["198.51.100.0", 24], ["203.0.113.0", 24], ["224.0.0.0", 3],
+] as const) specialIpv4.addSubnet(network, prefix, "ipv4");
+
 function publicAddress(address: string): boolean {
-  if (isIP(address) === 4) {
-    const [a, b, c] = address.split(".").map(Number);
-    return !(a === 0 || a === 10 || a === 127 || a >= 224 ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && (b === 168 || (b === 0 && (c === 0 || c === 2)))) ||
-      (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
-      (a === 203 && b === 0 && c === 113));
-  }
+  if (isIP(address) === 4) return !specialIpv4.check(address, "ipv4");
   if (isIP(address) !== 6) return false;
   return globalIpv6.check(address, "ipv6") && !specialIpv6.check(address, "ipv6");
 }
