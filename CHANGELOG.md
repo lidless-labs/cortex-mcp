@@ -19,6 +19,8 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Worker network policy remains necessary for redirects and later DNS changes.
 - Installer credentials use silent input, stdin transfer and systemd credentials.
   CI actions are pinned and tag publishing uses OIDC with provenance.
+- Invalid timeout, base URL, SSL-verification and fanout settings fail at startup
+  with the variable name in the error. Existing defaults are unchanged.
 
 - CI now fails when `npm test` fails. The test step no longer sets
   `continue-on-error`, so a failing suite blocks the tag-triggered npm publish
