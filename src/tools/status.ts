@@ -1,3 +1,4 @@
+import { formatCortexData } from "../safety.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CortexClient } from "../client.js";
 
@@ -9,6 +10,7 @@ export function registerStatusTools(
     "cortex_get_status",
     "Get Cortex instance health status, version info, and configuration",
     {},
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async () => {
       try {
         const status = await client.getStatus();
@@ -16,7 +18,7 @@ export function registerStatusTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   healthy: true,
                   version: status.versions.Cortex,
@@ -24,8 +26,6 @@ export function registerStatusTools(
                   authTypes: status.config.authType,
                   capabilities: status.config.capabilities,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -35,14 +35,12 @@ export function registerStatusTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   healthy: false,
                   error:
                     error instanceof Error ? error.message : String(error),
                 },
-                null,
-                2,
               ),
             },
           ],

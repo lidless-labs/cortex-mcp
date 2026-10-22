@@ -1,3 +1,4 @@
+import { formatCortexData } from "./safety.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CortexClient } from "./client.js";
 
@@ -10,7 +11,7 @@ export function registerResources(
     "cortex://analyzers",
     {
       description: "List of all enabled Cortex analyzers with their capabilities and supported data types",
-      mimeType: "application/json",
+      mimeType: "text/plain",
     },
     async () => {
       const analyzers = await client.listAnalyzers();
@@ -25,8 +26,8 @@ export function registerResources(
         contents: [
           {
             uri: "cortex://analyzers",
-            mimeType: "application/json",
-            text: JSON.stringify(summary, null, 2),
+            mimeType: "text/plain",
+            text: formatCortexData(summary),
           },
         ],
       };
@@ -39,7 +40,7 @@ export function registerResources(
     {
       description:
         "All available Cortex analyzer definitions (installed, not necessarily enabled) with config requirements",
-      mimeType: "application/json",
+      mimeType: "text/plain",
     },
     async () => {
       const defs = await client.listAnalyzerDefinitions();
@@ -59,11 +60,9 @@ export function registerResources(
         contents: [
           {
             uri: "cortex://analyzer-definitions",
-            mimeType: "application/json",
-            text: JSON.stringify(
+            mimeType: "text/plain",
+            text: formatCortexData(
               { total: summary.length, definitions: summary },
-              null,
-              2,
             ),
           },
         ],
@@ -77,7 +76,7 @@ export function registerResources(
     {
       description:
         "All available Cortex responder definitions with config requirements",
-      mimeType: "application/json",
+      mimeType: "text/plain",
     },
     async () => {
       const defs = await client.listResponderDefinitions();
@@ -97,11 +96,9 @@ export function registerResources(
         contents: [
           {
             uri: "cortex://responder-definitions",
-            mimeType: "application/json",
-            text: JSON.stringify(
+            mimeType: "text/plain",
+            text: formatCortexData(
               { total: summary.length, definitions: summary },
-              null,
-              2,
             ),
           },
         ],
@@ -114,7 +111,7 @@ export function registerResources(
     "cortex://jobs/recent",
     {
       description: "Recent Cortex analysis jobs (last 50)",
-      mimeType: "application/json",
+      mimeType: "text/plain",
     },
     async () => {
       const jobs = await client.searchJobs({
@@ -139,8 +136,8 @@ export function registerResources(
         contents: [
           {
             uri: "cortex://jobs/recent",
-            mimeType: "application/json",
-            text: JSON.stringify(summary, null, 2),
+            mimeType: "text/plain",
+            text: formatCortexData(summary),
           },
         ],
       };

@@ -1,3 +1,4 @@
+import { formatCortexData } from "../safety.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CortexClient } from "../client.js";
@@ -50,15 +51,15 @@ export function registerBulkTools(
 ): void {
   server.tool(
     "cortex_analyze_observable",
-    "Run applicable analyzers against an observable and collect aggregated results with taxonomy summary. Can auto-detect data type. By default only an explicit allowlist of analyzers runs; set fanOut=true to submit to every applicable analyzer (capped by CORTEX_MAX_FANOUT). Fanning out submits the observable to many third-party services (SSRF-by-proxy / IOC disclosure / quota burn), so it is opt-in.",
+    "Run applicable analyzers against an observable and collect aggregated results with taxonomy summary. Can auto-detect data type. By default only an explicit allowlist of analyzers runs; set fanOut=true to submit to every applicable analyzer (capped by CORTEX_MAX_FANOUT). Fanning out submits the observable to multiple third-party services, so it is opt-in.",
     {
-      data: z.string().describe("The observable value (IP, domain, hash, URL, email, etc.)"),
+      data: z.string().max(65_536).describe("The observable value (IP, domain, hash, URL, email, etc.)"),
       dataType: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe("The observable data type. If omitted, will be auto-detected from the value."),
       analyzers: z
-        .array(z.string())
+        .array(z.string().max(65_536)).max(500)
         .optional()
         .describe(
           "Explicit allowlist of analyzer names (substring match, case-insensitive) to run. Required unless fanOut=true. Only matching analyzers that also support the data type are submitted.",
@@ -99,6 +100,7 @@ export function registerBulkTools(
         .default(300)
         .describe("Timeout in seconds per analyzer (default: 300)"),
     },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     async ({ data, dataType: explicitType, analyzers: analyzerAllowlist, fanOut, maxAnalyzers, tlp, pap, timeout }) => {
       try {
         // Auto-detect data type if not provided
@@ -111,7 +113,7 @@ export function registerBulkTools(
               content: [
                 {
                   type: "text" as const,
-                  text: `Could not auto-detect data type for "${data}". Please specify dataType explicitly (ip, domain, url, hash, mail, fqdn, filename, registry, other).`,
+                  text: formatCortexData(`Could not auto-detect data type for "${data}". Please specify dataType explicitly (ip, domain, url, hash, mail, fqdn, filename, registry, other).`),
                 },
               ],
               isError: true,
@@ -132,14 +134,12 @@ export function registerBulkTools(
             content: [
               {
                 type: "text" as const,
-                text: JSON.stringify(
+                text: formatCortexData(
                   {
                     observable: { dataType, data, autoDetected },
                     analyzersRun: 0,
                     message: `No enabled analyzers support data type "${dataType}". Use cortex_list_analyzer_definitions to find analyzers to enable.`,
                   },
-                  null,
-                  2,
                 ),
               },
             ],
@@ -149,7 +149,7 @@ export function registerBulkTools(
         // Step 1b: Decide which analyzers actually run. Default (conservative)
         // requires an explicit allowlist. Auto-fanout to every applicable
         // analyzer must be explicitly opted into via fanOut=true, and is always
-        // capped to avoid SSRF-by-proxy / IOC disclosure / quota burn.
+        // capped to bound submissions to third-party services.
         const cap = Math.max(
           1,
           Math.min(
@@ -168,14 +168,12 @@ export function registerBulkTools(
               content: [
                 {
                   type: "text" as const,
-                  text: JSON.stringify(
+                  text: formatCortexData(
                     {
                       observable: { dataType, data, autoDetected },
                       analyzersRun: 0,
                       message: `None of the requested analyzers (${analyzerAllowlist.join(", ")}) are enabled for data type "${dataType}". Use cortex_list_analyzers to see available analyzers.`,
                     },
-                    null,
-                    2,
                   ),
                 },
               ],
@@ -186,15 +184,13 @@ export function registerBulkTools(
             content: [
               {
                 type: "text" as const,
-                text: JSON.stringify(
+                text: formatCortexData(
                   {
                     observable: { dataType, data, autoDetected },
                     analyzersRun: 0,
                     applicableAnalyzers: applicable.map((a) => a.name),
                     message: `No analyzers run. Pass an explicit \`analyzers\` allowlist (recommended), or set fanOut=true to run all applicable analyzers (up to ${cap}). Auto-fanout is opt-in because it submits this observable to multiple third-party services.`,
                   },
-                  null,
-                  2,
                 ),
               },
             ],
@@ -285,10 +281,12 @@ export function registerBulkTools(
         };
 
         return {
+          isError: (submitted.length === 0 && failed.length > 0) ||
+            (reports.length > 0 && reports.every(result => result.status === "rejected")),
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   observable: { dataType, data, autoDetected },
                   analyzersRun: submitted.length,
@@ -301,8 +299,6 @@ export function registerBulkTools(
                   results,
                   submissionErrors: failed.length > 0 ? failed : undefined,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -312,7 +308,7 @@ export function registerBulkTools(
           content: [
             {
               type: "text" as const,
-              text: `Error analyzing observable: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error analyzing observable: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,

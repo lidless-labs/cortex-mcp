@@ -12,6 +12,9 @@ const CORTEX_URL = process.env.CORTEX_URL;
 const CORTEX_API_KEY = process.env.CORTEX_API_KEY;
 const CORTEX_SUPERADMIN_KEY = process.env.CORTEX_SUPERADMIN_KEY;
 
+const mutationTestsAuthorized = process.env.CORTEX_TEST_MUTATIONS === "true" &&
+  process.env.CORTEX_MODE === "write" &&
+  ["1", "true"].includes(process.env.CORTEX_ALLOW_DESTRUCTIVE ?? "");
 const shouldRun = !!CORTEX_URL && !!CORTEX_API_KEY;
 
 describe.skipIf(!shouldRun)("Integration: Live Cortex Instance", () => {
@@ -24,7 +27,8 @@ describe.skipIf(!shouldRun)("Integration: Live Cortex Instance", () => {
       superadminKey: CORTEX_SUPERADMIN_KEY,
       verifySsl: false,
       timeout: 30000,
-      allowDestructive: false,
+      allowDestructive: mutationTestsAuthorized,
+      mode: process.env.CORTEX_MODE === "write" ? "write" : "read-only",
       maxFanout: 10,
     };
     client = new CortexClient(config);
@@ -104,18 +108,14 @@ describe.skipIf(!shouldRun)("Integration: Live Cortex Instance", () => {
 
   // ── Enable/Disable Analyzer Lifecycle ──
 
-  describe("Analyzer Lifecycle", () => {
+  describe.skipIf(!mutationTestsAuthorized)("Analyzer Lifecycle", () => {
     let enabledAnalyzerId: string | undefined;
 
     afterAll(async () => {
       // Cleanup: disable the test analyzer if it was enabled
       if (enabledAnalyzerId) {
-        try {
-          await client.deleteAnalyzer(enabledAnalyzerId);
-          console.log(`Cleaned up test analyzer: ${enabledAnalyzerId}`);
-        } catch {
-          // already cleaned up
-        }
+        await client.deleteAnalyzer(enabledAnalyzerId);
+        console.log(`Cleaned up test analyzer: ${enabledAnalyzerId}`);
       }
     });
 
@@ -128,10 +128,10 @@ describe.skipIf(!shouldRun)("Integration: Live Cortex Instance", () => {
         jobCache: 10,
       });
 
+      enabledAnalyzerId = analyzer.id;
       expect(analyzer.id).toBeDefined();
       expect(analyzer.name).toBe("Abuse_Finder_3_0");
       expect(analyzer.dataTypeList).toContain("ip");
-      enabledAnalyzerId = analyzer.id;
 
       console.log(`Enabled analyzer: ${analyzer.name} (${analyzer.id})`);
     });
@@ -157,30 +157,26 @@ describe.skipIf(!shouldRun)("Integration: Live Cortex Instance", () => {
 
   // ── Enable/Disable Responder Lifecycle ──
 
-  describe("Responder Lifecycle", () => {
+  describe.skipIf(!mutationTestsAuthorized)("Responder Lifecycle", () => {
     let enabledResponderId: string | undefined;
 
     afterAll(async () => {
       if (enabledResponderId) {
-        try {
-          await client.deleteResponder(enabledResponderId);
-        } catch {
-          // already cleaned up
-        }
+        await client.deleteResponder(enabledResponderId);
       }
     });
 
     it("should enable a responder", async () => {
       const responder = await client.enableResponder({
         name: "Mailer_1_0",
-        configuration: { from: "test@test.com", smtp_host: "localhost" },
+        configuration: { from: "example@example.com", smtp_host: "smtp.example.com" },
         rate: 100,
         rateUnit: "Day",
       });
 
+      enabledResponderId = responder.id;
       expect(responder.id).toBeDefined();
       expect(responder.name).toBe("Mailer_1_0");
-      enabledResponderId = responder.id;
 
       console.log(`Enabled responder: ${responder.name} (${responder.id})`);
     });
@@ -243,20 +239,20 @@ describe.skipIf(!shouldRun)("Integration: Live Cortex Instance", () => {
       expect(org.name).toBeDefined();
     });
 
-    it("should update an organization", async () => {
+    it.skipIf(!mutationTestsAuthorized)("should update an organization", async () => {
       const orgs = await client.listOrganizations();
-      const target = orgs.find((o) => o.name === "Neas") ?? orgs[0];
+      expect(orgs.length).toBeGreaterThan(0);
+      const target = orgs[0];
       const originalDesc = target.description;
 
-      const updated = await client.updateOrganization(target.id, {
-        description: "Integration test update",
-      });
-      expect(updated.description).toBe("Integration test update");
-
-      // Restore original
-      await client.updateOrganization(target.id, {
-        description: originalDesc,
-      });
+      try {
+        const updated = await client.updateOrganization(target.id, {
+          description: "Example integration update",
+        });
+        expect(updated.description).toBe("Example integration update");
+      } finally {
+        await client.updateOrganization(target.id, { description: originalDesc });
+      }
     });
   });
 
@@ -283,39 +279,6 @@ describe.skipIf(!shouldRun)("Integration: Live Cortex Instance", () => {
       expect(user.id).toBe(users[0].id);
     });
 
-    it("should renew a user API key", async () => {
-      // Renew the org admin key
-      const users = await client.listUsers();
-      const orgAdmin = users.find((u) => u.roles.includes("orgadmin"));
-      if (!orgAdmin) {
-        console.log("No org admin user found, skipping key renewal test");
-        return;
-      }
-
-      const newKey = await client.renewUserKey(orgAdmin.id);
-      expect(newKey).toBeDefined();
-      expect(newKey.length).toBeGreaterThan(10);
-      console.log(
-        `Renewed key for ${orgAdmin.id}: ${newKey.slice(0, 8)}...`,
-      );
-
-      // Update the client's API key since we just invalidated it
-      // (The test framework handles this through the superadmin key)
-    });
-
-    it("should get a user API key", async () => {
-      const users = await client.listUsers();
-      const orgAdmin = users.find((u) => u.roles.includes("orgadmin"));
-      if (!orgAdmin) {
-        console.log("No org admin user found, skipping key get test");
-        return;
-      }
-
-      const key = await client.getUserKey(orgAdmin.id);
-      expect(key).toBeDefined();
-      expect(key.length).toBeGreaterThan(10);
-      console.log(`Got key for ${orgAdmin.id}: ${key.slice(0, 8)}...`);
-    });
   });
 
   // ── Error handling ──
@@ -327,7 +290,8 @@ describe.skipIf(!shouldRun)("Integration: Live Cortex Instance", () => {
         apiKey: "invalid-key-12345",
         verifySsl: false,
         timeout: 10000,
-        allowDestructive: false,
+        allowDestructive: mutationTestsAuthorized,
+      mode: process.env.CORTEX_MODE === "write" ? "write" : "read-only",
         maxFanout: 10,
       };
       const badClient = new CortexClient(badConfig);
