@@ -644,7 +644,7 @@ describe("job search pagination on the wire", () => {
       expect(requests).toHaveLength(1);
       const url = new URL(requests[0].url!, baseUrl);
       expect(url.searchParams.get("range")).toBe(kind === "resource" ? "0-50" : "0-5");
-      expect(url.searchParams.getAll("sort")).toEqual(["-createdAt"]);
+      expect(url.searchParams.getAll("sort")).toEqual([kind === "cleanup" ? "+createdAt" : "-createdAt"]);
       expect(body).toEqual({ query: {} });
     });
   });
