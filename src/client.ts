@@ -18,6 +18,20 @@ import type {
   CortexUser,
 } from "./types.js";
 
+/**
+ * Transport margin added on top of a waitreport's `atMost` duration, so Cortex
+ * can answer at the end of its wait window before the client gives up.
+ */
+const WAIT_REPORT_MARGIN_MS = 10_000;
+
+/** Per-request overrides for the shared request path. */
+interface RequestOverrides {
+  /** Abort timer for this request in ms. Defaults to the configured timeout. */
+  timeoutMs?: number;
+  /** undici dispatcher for this request. Defaults to the scoped dispatcher. */
+  dispatcher?: Agent;
+}
+
 export class CortexClient {
   private baseUrl: string;
   private timeout: number;
@@ -28,6 +42,14 @@ export class CortexClient {
    * NODE_TLS_REJECT_UNAUTHORIZED, which would weaken TLS for the whole process.
    */
   private dispatcher?: Agent;
+  /**
+   * Dispatcher for waitreport calls, created on first use and reused so
+   * concurrent waits share one connection pool. undici's default 300 s
+   * headersTimeout and bodyTimeout would cut off a wait of 300 s or more
+   * before Cortex answers, so both are disabled and the per-request abort
+   * timer bounds the call instead.
+   */
+  private waitReportAgent?: Agent;
 
   constructor(private config: CortexConfig) {
     this.baseUrl = `${config.url}/api`;
@@ -48,6 +70,17 @@ export class CortexClient {
     return this.dispatcher ? { dispatcher: this.dispatcher } : {};
   }
 
+  private get waitReportDispatcher(): Agent {
+    this.waitReportAgent ??= new Agent({
+      headersTimeout: 0,
+      bodyTimeout: 0,
+      ...(this.config.verifySsl
+        ? {}
+        : { connect: { rejectUnauthorized: false } }),
+    });
+    return this.waitReportAgent;
+  }
+
   /** Read-only view of safety-relevant configuration for tool gating. */
   get settings(): {
     fileBaseDir?: string;
@@ -65,10 +98,13 @@ export class CortexClient {
     path: string,
     options: RequestInit = {},
     useSuperadmin = false,
+    overrides: RequestOverrides = {},
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
+    const timeoutMs = overrides.timeoutMs ?? this.timeout;
+    const dispatcher = overrides.dispatcher ?? this.dispatcher;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     const authKey = useSuperadmin
       ? (this.config.superadminKey ?? this.config.apiKey)
       : this.config.apiKey;
@@ -85,7 +121,7 @@ export class CortexClient {
     try {
       const response = await fetch(url, {
         ...options,
-        ...this.fetchInit,
+        ...(dispatcher ? { dispatcher } : {}),
         headers: { ...headers, ...(options.headers as Record<string, string>) },
         signal: controller.signal,
       });
@@ -111,7 +147,7 @@ export class CortexClient {
       return JSON.parse(text) as T;
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
-        throw new Error(`Cortex API timeout after ${this.timeout}ms`);
+        throw new Error(`Cortex API timeout after ${timeoutMs}ms`);
       }
       throw error;
     } finally {
@@ -328,12 +364,27 @@ export class CortexClient {
     );
   }
 
+  /**
+   * Ask Cortex to hold the request until the job finishes or `timeoutSeconds`
+   * elapses. The client-side timeout for this call is the requested wait plus
+   * a transport margin (never less than the configured timeout), so the
+   * advertised wait is not cut short by `CORTEX_TIMEOUT`.
+   */
   async waitAndGetReport(
     jobId: string,
     timeoutSeconds: number = 300,
   ): Promise<JobReport> {
     return this.request<JobReport>(
       `/job/${encodeURIComponent(jobId)}/waitreport?atMost=${timeoutSeconds}second`,
+      {},
+      false,
+      {
+        timeoutMs: Math.max(
+          this.timeout,
+          timeoutSeconds * 1000 + WAIT_REPORT_MARGIN_MS,
+        ),
+        dispatcher: this.waitReportDispatcher,
+      },
     );
   }
 

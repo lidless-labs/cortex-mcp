@@ -20,6 +20,14 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a prominent website link, and "Why not something else?" / "What cortex-mcp is
   not" sections. Documentation only; no change to the server, tools, or behavior.
 
+### Fixed
+
+- `cortex_wait_and_get_report` and the report wait in `cortex_analyze_observable`
+  now wait for the requested `timeout` instead of failing after `CORTEX_TIMEOUT`
+  (30 seconds by default). The wait-report request allows the requested wait plus
+  10 seconds, and waits of 300 seconds or more are no longer cut off by the HTTP
+  client's built-in 300-second header and body timeouts.
+
 ## [1.2.0]
 
 ### Added
