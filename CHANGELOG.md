@@ -19,6 +19,8 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Worker network policy remains necessary for redirects and later DNS changes.
 - Installer credentials use silent input, stdin transfer and systemd credentials.
   CI actions are pinned and tag publishing uses OIDC with provenance.
+- Invalid timeout, base URL, SSL-verification and fanout settings fail at startup
+  with the variable name in the error. Existing defaults are unchanged.
 - Job searches send pagination and sorting in URL query parameters. Unfiltered
   job listing, cleanup previews and the recent-jobs resource use an empty query.
 
