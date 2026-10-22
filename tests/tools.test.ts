@@ -88,7 +88,7 @@ const mockArtifacts: Artifact[] = [
   },
   {
     dataType: "ip",
-    data: "192.168.1.100",
+    data: "192.0.2.100",
     tlp: 2,
     tags: ["internal"],
   },
@@ -158,9 +158,9 @@ function captureTools(
         name: string,
         _desc: string,
         _schema: unknown,
-        handler: ToolHandler,
+        ...rest: unknown[]
       ) => {
-        tools.set(name, handler);
+        tools.set(name, rest.at(-1) as ToolHandler);
       },
     ),
   } as unknown as McpServer;
@@ -357,7 +357,7 @@ describe("Job Tools", () => {
 
       expect(parsed).toHaveLength(2);
       expect(parsed[0].data).toBe("malware.example.com");
-      expect(parsed[1].data).toBe("192.168.1.100");
+      expect(parsed[1].data).toBe("192.0.2.100");
     });
   });
 });

@@ -8,6 +8,9 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Job searches send pagination and sorting in URL query parameters. Unfiltered
+  job listing, cleanup previews and the recent-jobs resource use an empty query.
+
 - CI now fails when `npm test` fails. The test step no longer sets
   `continue-on-error`, so a failing suite blocks the tag-triggered npm publish
   job, which depends on the test job.

@@ -148,6 +148,7 @@ export function registerJobTools(
           "Filter by status (Waiting, InProgress, Success, Failure, Deleted)",
         ),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async ({ dataType, analyzerName, limit, status }) => {
       try {
         const must: Record<string, unknown>[] = [];
@@ -165,7 +166,7 @@ export function registerJobTools(
         const query: Record<string, unknown> =
           must.length > 0
             ? { _and: must }
-            : { _field: "status", _value: "*" };
+            : {};
 
         const jobs = await client.searchJobs({
           query,
@@ -314,6 +315,7 @@ export function registerJobTools(
         .default(100)
         .describe("Maximum jobs to process (default: 100)"),
     },
+    { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     async ({ status, olderThanDays, dryRun, limit }) => {
       try {
         if (!status && !olderThanDays) {
@@ -336,7 +338,7 @@ export function registerJobTools(
         const query: Record<string, unknown> =
           must.length > 0
             ? must.length === 1 ? must[0] : { _and: must }
-            : { _field: "status", _value: "*" };
+            : {};
 
         const jobs = await client.searchJobs({
           query,

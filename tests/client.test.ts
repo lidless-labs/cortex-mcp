@@ -343,7 +343,7 @@ describe("CortexClient", () => {
 
       expect(result).toHaveLength(1);
       expect(fetch).toHaveBeenCalledWith(
-        "https://cortex.example.com:9001/api/job/_search",
+        "https://cortex.example.com:9001/api/job/_search?range=0-10&sort=-createdAt",
         expect.objectContaining({
           method: "POST",
         }),

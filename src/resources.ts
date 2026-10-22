@@ -118,7 +118,7 @@ export function registerResources(
     },
     async () => {
       const jobs = await client.searchJobs({
-        query: { _field: "status", _value: "*" },
+        query: {},
         range: "0-50",
         sort: ["-createdAt"],
       });
