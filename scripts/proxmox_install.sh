@@ -52,9 +52,9 @@ read -p "Storage [local-lvm]: " CT_STORAGE; CT_STORAGE=${CT_STORAGE:-local-lvm}
 
 # Service config
 echo ""; echo -e "${YELLOW}Cortex MCP Configuration${NC}"
-read -p "CORTEX_URL: " CORTEX_URL_VAL
-read -p "CORTEX_API_KEY: " CORTEX_API_KEY_VAL
-read -p "Port [3100]: " MCP_PORT; MCP_PORT=${MCP_PORT:-3100}
+read -r -p "CORTEX_URL: " CORTEX_URL_VAL
+read -r -s -p "CORTEX_API_KEY: " CORTEX_API_KEY_VAL
+printf '\n'
 
 # Template
 echo -e "${YELLOW}Finding Ubuntu template...${NC}"
@@ -78,6 +78,7 @@ pct create "$CTID" "$TEMPLATE" \
     --unprivileged 1 --features nesting=1 --password "$CT_PASSWORD" --start 0
 
 # Start and wait for network
+unset CT_PASSWORD
 pct start "$CTID"; sleep 10
 for i in {1..30}; do
     pct exec "$CTID" -- ping -c1 8.8.8.8 &>/dev/null && break; sleep 2
@@ -92,16 +93,14 @@ pct exec "$CTID" -- bash -c "apt-get update && apt-get install -y nodejs"
 
 # Clone, configure, build
 echo -e "${YELLOW}Setting up Cortex MCP...${NC}"
-pct exec "$CTID" -- bash -c "git clone https://github.com/solomonneas/cortex-mcp.git /opt/cortex-mcp"
-pct exec "$CTID" -- bash -c "cat > /opt/cortex-mcp/.env << 'ENVEOF'
-CORTEX_URL=$CORTEX_URL_VAL
-CORTEX_API_KEY=$CORTEX_API_KEY_VAL
-PORT=$MCP_PORT
-ENVEOF"
-pct exec "$CTID" -- bash -c "cd /opt/cortex-mcp && npm install && npm run build"
+pct exec "$CTID" -- bash -c "git clone https://github.com/lidless-labs/cortex-mcp.git /opt/cortex-mcp"
+printf '%s' "$CORTEX_URL_VAL" | pct exec "$CTID" -- bash /opt/cortex-mcp/scripts/store-credential.sh /etc/cortex-mcp/cortex-url
+printf '%s' "$CORTEX_API_KEY_VAL" | pct exec "$CTID" -- bash /opt/cortex-mcp/scripts/store-credential.sh /etc/cortex-mcp/cortex-api-key
+unset CORTEX_API_KEY_VAL
+pct exec "$CTID" -- bash -c "cd /opt/cortex-mcp && npm ci && npm run build"
 
 # Systemd service
-pct exec "$CTID" -- bash -c "cat > /etc/systemd/system/cortex-mcp.service << 'SVCEOF'
+pct exec "$CTID" -- tee /etc/systemd/system/cortex-mcp.service >/dev/null <<'SVCEOF'
 [Unit]
 Description=Cortex MCP
 After=network.target
@@ -112,11 +111,13 @@ WorkingDirectory=/opt/cortex-mcp
 ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
 RestartSec=10
-EnvironmentFile=/opt/cortex-mcp/.env
+LoadCredential=cortex-api-key:/etc/cortex-mcp/cortex-api-key
+LoadCredential=cortex-url:/etc/cortex-mcp/cortex-url
+Environment=CORTEX_MODE=read-only
 
 [Install]
 WantedBy=multi-user.target
-SVCEOF"
+SVCEOF
 pct exec "$CTID" -- bash -c "systemctl daemon-reload && systemctl enable cortex-mcp && systemctl start cortex-mcp"
 
 CT_IP=$(pct exec "$CTID" -- hostname -I 2>/dev/null | awk '{print $1}')
@@ -128,8 +129,6 @@ echo -e "${GREEN}================================================${NC}"
 echo -e "  CT ID:     $CTID"
 echo -e "  Hostname:  $CT_HOSTNAME"
 echo -e "  IP:        $CT_IP"
-echo -e "  Password:  $CT_PASSWORD"
-echo -e "  Port:      $MCP_PORT"
 echo ""
 echo -e "  ${YELLOW}pct enter $CTID${NC}"
 echo -e "  ${YELLOW}pct exec $CTID -- journalctl -u cortex-mcp -f${NC}"

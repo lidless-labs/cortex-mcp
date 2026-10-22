@@ -17,6 +17,10 @@ import type {
   ActionJob,
 } from "../src/types.js";
 
+function parseData(text: string): any {
+  return JSON.parse(text.split("<untrusted_cortex_data>\n")[1].split("\n</untrusted_cortex_data>")[0]);
+}
+
 // Mock data
 const mockAnalyzers: Analyzer[] = [
   {
@@ -184,7 +188,7 @@ describe("Analyzer Tools", () => {
 
       const handler = tools.get("cortex_list_analyzers")!;
       const result = await handler({});
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed).toHaveLength(3);
       expect(parsed[0].name).toBe("VirusTotal_GetReport");
@@ -195,7 +199,7 @@ describe("Analyzer Tools", () => {
 
       const handler = tools.get("cortex_list_analyzers")!;
       const result = await handler({ dataType: "ip" });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed).toHaveLength(2);
       expect(parsed.map((a: any) => a.name)).toContain("VirusTotal_GetReport");
@@ -221,7 +225,7 @@ describe("Analyzer Tools", () => {
 
       const handler = tools.get("cortex_get_analyzer")!;
       const result = await handler({ analyzerId: "VirusTotal_GetReport_3_1" });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed.id).toBe("VirusTotal_GetReport_3_1");
       expect(parsed.name).toBe("VirusTotal_GetReport");
@@ -240,7 +244,7 @@ describe("Analyzer Tools", () => {
         tlp: 2,
         pap: 2,
       });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed.jobId).toBe("job_abc123");
       expect(parsed.status).toBe("Waiting");
@@ -260,7 +264,7 @@ describe("Analyzer Tools", () => {
         tlp: 2,
         pap: 2,
       });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed.analyzerUsed.name).toBe("VirusTotal_GetReport");
       expect(parsed.jobId).toBe("job_abc123");
@@ -299,7 +303,7 @@ describe("Job Tools", () => {
 
       const handler = tools.get("cortex_get_job")!;
       const result = await handler({ jobId: "job_abc123" });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed.id).toBe("job_abc123");
       expect(parsed.status).toBe("Waiting");
@@ -312,7 +316,7 @@ describe("Job Tools", () => {
 
       const handler = tools.get("cortex_get_job_report")!;
       const result = await handler({ jobId: "job_abc123" });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed.report.summary.taxonomies).toHaveLength(1);
       expect(parsed.report.summary.taxonomies[0].level).toBe("malicious");
@@ -325,7 +329,7 @@ describe("Job Tools", () => {
 
       const handler = tools.get("cortex_wait_and_get_report")!;
       const result = await handler({ jobId: "job_abc123", timeout: 120 });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed.status).toBe("Success");
       expect(parsed.taxonomies).toHaveLength(1);
@@ -340,7 +344,7 @@ describe("Job Tools", () => {
 
       const handler = tools.get("cortex_list_jobs")!;
       const result = await handler({ dataType: "ip", limit: 10 });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed).toHaveLength(1);
       expect(parsed[0].dataType).toBe("ip");
@@ -353,7 +357,7 @@ describe("Job Tools", () => {
 
       const handler = tools.get("cortex_get_job_artifacts")!;
       const result = await handler({ jobId: "job_abc123" });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed).toHaveLength(2);
       expect(parsed[0].data).toBe("malware.example.com");
@@ -377,7 +381,7 @@ describe("Responder Tools", () => {
 
       const handler = tools.get("cortex_list_responders")!;
       const result = await handler({});
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed).toHaveLength(1);
       expect(parsed[0].name).toBe("Mailer");
@@ -388,7 +392,7 @@ describe("Responder Tools", () => {
 
       const handler = tools.get("cortex_list_responders")!;
       const result = await handler({ dataType: "case" });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed).toHaveLength(1);
     });
@@ -398,7 +402,7 @@ describe("Responder Tools", () => {
 
       const handler = tools.get("cortex_list_responders")!;
       const result = await handler({ dataType: "ip" });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed).toHaveLength(0);
     });
@@ -415,7 +419,7 @@ describe("Responder Tools", () => {
         objectId: "artifact_456",
         confirm: true,
       });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed.actionJobId).toBe("action_789");
       expect(parsed.status).toBe("Success");
@@ -525,7 +529,7 @@ describe("Bulk Tools", () => {
         pap: 2,
         timeout: 60,
       });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed.analyzersRun).toBe(2);
       expect(parsed.summary.malicious).toBe(1);
@@ -544,7 +548,7 @@ describe("Bulk Tools", () => {
         pap: 2,
         timeout: 60,
       });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed.analyzersRun).toBe(0);
       expect(parsed.message).toContain("fanOut=true");
@@ -570,7 +574,7 @@ describe("Bulk Tools", () => {
         pap: 2,
         timeout: 60,
       });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed.analyzersRun).toBe(1);
       // Only the allowlisted analyzer was submitted.
@@ -605,7 +609,7 @@ describe("Bulk Tools", () => {
         pap: 2,
         timeout: 60,
       });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       // Two analyzers support IP, but the cap is 1.
       expect(parsed.analyzersRun).toBe(1);
@@ -641,7 +645,7 @@ describe("Bulk Tools", () => {
         pap: 2,
         timeout: 60,
       });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed.analyzersFailed).toBe(1);
       expect(parsed.submissionErrors).toHaveLength(1);
@@ -700,7 +704,7 @@ describe("Bulk Tools", () => {
         pap: 2,
         timeout: 60,
       });
-      const parsed = JSON.parse(result.content[0].text);
+      const parsed = parseData(result.content[0].text);
 
       expect(parsed.analyzersRun).toBe(1);
       expect(parsed.analyzersFailed).toBe(1);

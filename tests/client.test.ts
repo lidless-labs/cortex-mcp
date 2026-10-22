@@ -100,7 +100,8 @@ const config: CortexConfig = {
   apiKey: "test-api-key-123",
   verifySsl: true,
   timeout: 30000,
-  allowDestructive: false,
+  allowDestructive: true,
+  mode: "write",
   maxFanout: 10,
 };
 
@@ -439,13 +440,13 @@ describe("CortexClient", () => {
       );
     });
 
-    it("should include response body in error message", async () => {
+    it("omits response body from error message", async () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
         new Response('{"message":"analyzer disabled"}', { status: 400 }),
       );
 
       await expect(client.listAnalyzers()).rejects.toThrow(
-        'analyzer disabled',
+        'Cortex API error: HTTP 400',
       );
     });
   });

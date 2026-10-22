@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { MAX_REQUEST_BYTES, MAX_FILE_BYTES, readResponse, parseResponse, httpError } from "./safety.js";
+import { validateObservableTarget } from "./targets.js";
 import { Agent } from "undici";
 import type { CortexConfig } from "./config.js";
 import type {
@@ -30,6 +33,12 @@ interface RequestOverrides {
   timeoutMs?: number;
   /** undici dispatcher for this request. Defaults to the scoped dispatcher. */
   dispatcher?: Agent;
+  readOnlySearch?: boolean;
+}
+
+export interface CredentialStore {
+  /** Persist directly to an operator-approved store without logging key material. */
+  put(userId: string, key: string): Promise<{ reference: string }>;
 }
 
 export class CortexClient {
@@ -51,7 +60,7 @@ export class CortexClient {
    */
   private waitReportAgent?: Agent;
 
-  constructor(private config: CortexConfig) {
+  constructor(private config: CortexConfig, private credentialStore?: CredentialStore) {
     this.baseUrl = `${config.url}/api`;
     this.timeout = config.timeout;
     if (!config.verifySsl) {
@@ -86,12 +95,22 @@ export class CortexClient {
     fileBaseDir?: string;
     allowDestructive: boolean;
     maxFanout: number;
+    mode: "read-only" | "write";
   } {
     return {
       fileBaseDir: this.config.fileBaseDir,
       allowDestructive: this.config.allowDestructive,
       maxFanout: this.config.maxFanout,
+      mode: this.config.mode ?? "read-only",
     };
+  }
+
+  private assertRequestAllowed(method: string, path: string, readOnlySearch = false): void {
+    if (["GET", "HEAD"].includes(method) || (readOnlySearch && method === "POST" && path.split("?")[0] === "/job/_search")) return;
+    if (this.config.mode !== "write") throw new Error("State-changing requests require CORTEX_MODE=write");
+    if ((method === "DELETE" || /^\/responder\/[^/]+\/run$/.test(path)) && !this.config.allowDestructive) {
+      throw new Error("This operation requires CORTEX_ALLOW_DESTRUCTIVE=1");
+    }
   }
 
   private async request<T>(
@@ -100,6 +119,10 @@ export class CortexClient {
     useSuperadmin = false,
     overrides: RequestOverrides = {},
   ): Promise<T> {
+    this.assertRequestAllowed(options.method ?? "GET", path, overrides.readOnlySearch);
+    if (typeof options.body === "string" && Buffer.byteLength(options.body) > MAX_REQUEST_BYTES) {
+      throw new Error("Cortex API request exceeds byte limit");
+    }
     const url = `${this.baseUrl}${path}`;
     const timeoutMs = overrides.timeoutMs ?? this.timeout;
     const dispatcher = overrides.dispatcher ?? this.dispatcher;
@@ -121,30 +144,21 @@ export class CortexClient {
     try {
       const response = await fetch(url, {
         ...options,
+        redirect: "error",
         ...(dispatcher ? { dispatcher } : {}),
         headers: { ...headers, ...(options.headers as Record<string, string>) },
         signal: controller.signal,
       });
 
       if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        const messages: Record<number, string> = {
-          401: "Invalid API key or unauthorized access",
-          403: "Forbidden - insufficient permissions",
-          404: "Resource not found",
-          429: "Rate limit exceeded",
-          500: "Cortex internal server error",
-        };
-        const msg =
-          messages[response.status] ??
-          `HTTP ${response.status}: ${response.statusText}`;
-        throw new Error(`Cortex API error: ${msg}${body ? ` - ${body}` : ""}`);
+        await response.body?.cancel();
+        throw httpError(response.status);
       }
 
       // Some DELETE endpoints return empty body
-      const text = await response.text();
+      const text = await readResponse(response);
       if (!text) return undefined as T;
-      return JSON.parse(text) as T;
+      return parseResponse<T>(text);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error(`Cortex API timeout after ${timeoutMs}ms`);
@@ -161,6 +175,7 @@ export class CortexClient {
     options: RequestInit = {},
     useSuperadmin = false,
   ): Promise<string> {
+    this.assertRequestAllowed(options.method ?? "GET", path);
     const url = `${this.baseUrl}${path}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -178,17 +193,18 @@ export class CortexClient {
     try {
       const response = await fetch(url, {
         ...options,
+        redirect: "error",
         ...this.fetchInit,
         headers: { ...headers, ...(options.headers as Record<string, string>) },
         signal: controller.signal,
       });
 
       if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        throw new Error(`Cortex API error: HTTP ${response.status}${body ? ` - ${body}` : ""}`);
+        await response.body?.cancel();
+        throw httpError(response.status);
       }
 
-      return response.text();
+      return await readResponse(response);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error(`Cortex API timeout after ${this.timeout}ms`);
@@ -226,6 +242,8 @@ export class CortexClient {
     analyzerId: string,
     data: RunAnalyzerRequest,
   ): Promise<Job> {
+    this.assertRequestAllowed("POST", "/analyzer/run");
+    await validateObservableTarget(data.dataType, data.data, this.config.allowPrivateTargets ?? false);
     return this.request<Job>(
       `/analyzer/${encodeURIComponent(analyzerId)}/run`,
       {
@@ -248,6 +266,8 @@ export class CortexClient {
       message?: string;
     },
   ): Promise<Job> {
+    this.assertRequestAllowed("POST", "/analyzer/run");
+    if (file.content.byteLength > MAX_FILE_BYTES) throw new Error("Analysis file exceeds byte limit");
     const url = `${this.baseUrl}/analyzer/${encodeURIComponent(analyzerId)}/run`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -270,6 +290,7 @@ export class CortexClient {
 
       const response = await fetch(url, {
         method: "POST",
+        redirect: "error",
         ...this.fetchInit,
         headers: {
           Authorization: `Bearer ${this.config.apiKey}`,
@@ -279,11 +300,11 @@ export class CortexClient {
       });
 
       if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        throw new Error(`Cortex API error: HTTP ${response.status}${body ? ` - ${body}` : ""}`);
+        await response.body?.cancel();
+        throw httpError(response.status);
       }
 
-      return response.json() as Promise<Job>;
+      return parseResponse<Job>(await readResponse(response));
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error(`Cortex API timeout after ${this.timeout}ms`);
@@ -396,7 +417,7 @@ export class CortexClient {
     return this.request<Job[]>(`/job/_search${search ? `?${search}` : ""}`, {
       method: "POST",
       body: JSON.stringify({ query: query.query ?? {} }),
-    });
+    }, false, { readOnlySearch: true });
   }
 
   async getJobArtifacts(jobId: string): Promise<Artifact[]> {
@@ -513,19 +534,19 @@ export class CortexClient {
     );
   }
 
-  async renewUserKey(userId: string): Promise<string> {
-    return this.requestText(
+  async renewUserKey(userId: string): Promise<{ reference: string; fingerprint: string }> {
+    this.assertRequestAllowed("POST", "/user/key/renew");
+    if (!this.credentialStore) throw new Error("Key rotation requires an approved credential store");
+    const key = await this.requestText(
       `/user/${encodeURIComponent(userId)}/key/renew`,
       { method: "POST" },
       true,
     );
-  }
-
-  async getUserKey(userId: string): Promise<string> {
-    return this.requestText(
-      `/user/${encodeURIComponent(userId)}/key`,
-      {},
-      true,
-    );
+    try {
+      const { reference } = await this.credentialStore.put(userId, key);
+      return { reference, fingerprint: createHash("sha256").update(key).digest("hex") };
+    } catch {
+      throw new Error("Credential store write failed after key rotation. Recover the key through Cortex administration.");
+    }
   }
 }

@@ -101,7 +101,8 @@ function baseConfig(baseUrl: string, timeoutMs: number): CortexConfig {
     superadminKey: "superadmin-key",
     verifySsl: true,
     timeout: timeoutMs,
-    allowDestructive: false,
+    allowDestructive: true,
+    mode: "write",
     maxFanout: 10,
   };
 }
@@ -134,30 +135,9 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, timeoutMs));
+          const client = new CortexClient(baseConfig(baseUrl, timeoutMs), { put: async () => ({ reference: "store:example" }) });
 
           await expect(client.getStatus()).rejects.toThrow(
-            `Cortex API timeout after ${timeoutMs}ms`,
-          );
-        },
-      );
-    });
-
-    it("maps undici fetch abort to a public timeout error for text endpoints", async () => {
-      const timeoutMs = 80;
-
-      await withMockCortex(
-        {
-          "/api/user/test-user/key": (req, res) => {
-            scheduleDelayedWrite(req, res, 250, () =>
-              text(res, 200, "renewed-key-value"),
-            );
-          },
-        },
-        async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, timeoutMs));
-
-          await expect(client.getUserKey("test-user")).rejects.toThrow(
             `Cortex API timeout after ${timeoutMs}ms`,
           );
         },
@@ -176,7 +156,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, timeoutMs));
+          const client = new CortexClient(baseConfig(baseUrl, timeoutMs), { put: async () => ({ reference: "store:example" }) });
 
           await expect(client.renewUserKey("test-user")).rejects.toThrow(
             `Cortex API timeout after ${timeoutMs}ms`,
@@ -197,7 +177,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, timeoutMs));
+          const client = new CortexClient(baseConfig(baseUrl, timeoutMs), { put: async () => ({ reference: "store:example" }) });
 
           await expect(
             client.runAnalyzerWithFile(
@@ -233,7 +213,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl, requests }) => {
-          const client = new CortexClient(baseConfig(baseUrl, timeoutMs));
+          const client = new CortexClient(baseConfig(baseUrl, timeoutMs), { put: async () => ({ reference: "store:example" }) });
 
           const result = await client.waitAndGetReport("job-1", 1);
           expect(result.status).toBe("Success");
@@ -277,7 +257,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, timeoutMs));
+          const client = new CortexClient(baseConfig(baseUrl, timeoutMs), { put: async () => ({ reference: "store:example" }) });
 
           await client.waitAndGetReport("job-1", 1);
           await expect(client.getJobReport("job-1")).rejects.toThrow(
@@ -303,7 +283,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, timeoutMs));
+          const client = new CortexClient(baseConfig(baseUrl, timeoutMs), { put: async () => ({ reference: "store:example" }) });
 
           await expect(client.getStatus()).rejects.toThrow(
             `Cortex API timeout after ${timeoutMs}ms`,
@@ -330,7 +310,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, timeoutMs));
+          const client = new CortexClient(baseConfig(baseUrl, timeoutMs), { put: async () => ({ reference: "store:example" }) });
 
           await expect(client.getStatus()).rejects.toThrow(
             `Cortex API timeout after ${timeoutMs}ms`,
@@ -352,7 +332,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+          const client = new CortexClient(baseConfig(baseUrl, 5_000), { put: async () => ({ reference: "store:example" }) });
 
           const status = await client.getStatus();
           expect(status.versions.Cortex).toBe("3.1.0");
@@ -380,10 +360,10 @@ describe("CortexClient HTTP request path (offline)", () => {
             },
           },
           async ({ baseUrl }) => {
-            const client = new CortexClient(baseConfig(baseUrl, 5_000));
+            const client = new CortexClient(baseConfig(baseUrl, 5_000), { put: async () => ({ reference: "store:example" }) });
 
             await expect(client.listAnalyzers()).rejects.toThrow(
-              `Cortex API error: ${message} - body-for-${status}`,
+              `Cortex API error: ${message}`,
             );
           },
         );
@@ -399,7 +379,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+          const client = new CortexClient(baseConfig(baseUrl, 5_000), { put: async () => ({ reference: "store:example" }) });
 
           await expect(client.listAnalyzers()).rejects.toThrow(
             "Cortex API error: Invalid API key or unauthorized access",
@@ -417,7 +397,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+          const client = new CortexClient(baseConfig(baseUrl, 5_000), { put: async () => ({ reference: "store:example" }) });
 
           await expect(
             client.deleteAnalyzer("to-delete"),
@@ -426,7 +406,7 @@ describe("CortexClient HTTP request path (offline)", () => {
       );
     });
 
-    it("maps unknown status codes with status text and response body", async () => {
+    it("maps unknown status codes without status text or response body", async () => {
       await withMockCortex(
         {
           "/api/analyzer": (_req, res) => {
@@ -434,10 +414,10 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+          const client = new CortexClient(baseConfig(baseUrl, 5_000), { put: async () => ({ reference: "store:example" }) });
 
           await expect(client.listAnalyzers()).rejects.toThrow(
-            'Cortex API error: HTTP 418: I\'m a Teapot - {"message":"teapot"}',
+            "Cortex API error: HTTP 418",
           );
         },
       );
@@ -454,7 +434,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl, requests }) => {
-          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+          const client = new CortexClient(baseConfig(baseUrl, 5_000), { put: async () => ({ reference: "store:example" }) });
           await client.getStatus();
 
           expect(requests).toHaveLength(1);
@@ -473,7 +453,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl, requests }) => {
-          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+          const client = new CortexClient(baseConfig(baseUrl, 5_000), { put: async () => ({ reference: "store:example" }) });
           await client.searchJobs({
             query: { _field: "status", _value: "*" },
             range: "0-1",
@@ -491,22 +471,22 @@ describe("CortexClient HTTP request path (offline)", () => {
     it("maps non-ok text responses without a body suffix when empty", async () => {
       await withMockCortex(
         {
-          "/api/user/test-user/key": (_req, res) => {
+          "/api/user/test-user/key/renew": (_req, res) => {
             res.writeHead(403);
             res.end();
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+          const client = new CortexClient(baseConfig(baseUrl, 5_000), { put: async () => ({ reference: "store:example" }) });
 
-          await expect(client.getUserKey("test-user")).rejects.toThrow(
-            "Cortex API error: HTTP 403",
+          await expect(client.renewUserKey("test-user")).rejects.toThrow(
+            "Cortex API error: Forbidden - insufficient permissions",
           );
         },
       );
     });
 
-    it("maps non-ok text responses to Cortex API error with status and body", async () => {
+    it("maps non-ok text responses to Cortex API error without response body", async () => {
       await withMockCortex(
         {
           "/api/user/test-user/key/renew": (_req, res) => {
@@ -514,10 +494,10 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+          const client = new CortexClient(baseConfig(baseUrl, 5_000), { put: async () => ({ reference: "store:example" }) });
 
           await expect(client.renewUserKey("test-user")).rejects.toThrow(
-            "Cortex API error: HTTP 403 - renew forbidden",
+            "Cortex API error: Forbidden - insufficient permissions",
           );
         },
       );
@@ -526,15 +506,16 @@ describe("CortexClient HTTP request path (offline)", () => {
     it("uses the superadmin bearer token for text endpoints", async () => {
       await withMockCortex(
         {
-          "/api/user/test-user/key": (_req, res) => {
+          "/api/user/test-user/key/renew": (_req, res) => {
             text(res, 200, "visible-key");
           },
         },
         async ({ baseUrl, requests }) => {
-          const client = new CortexClient(baseConfig(baseUrl, 5_000));
-          const key = await client.getUserKey("test-user");
+          const client = new CortexClient(baseConfig(baseUrl, 5_000), { put: async () => ({ reference: "store:example" }) });
+          const key = await client.renewUserKey("test-user");
 
-          expect(key).toBe("visible-key");
+          expect(key.reference).toBe("store:example");
+          expect(JSON.stringify(key)).not.toContain("visible-key");
           expect(requests[0].headers.authorization).toBe(
             "Bearer superadmin-key",
           );
@@ -544,7 +525,7 @@ describe("CortexClient HTTP request path (offline)", () => {
   });
 
   describe("public HTTP error mapping (runAnalyzerWithFile)", () => {
-    it("maps non-ok multipart responses to Cortex API error with status and body", async () => {
+    it("maps non-ok multipart responses to Cortex API error without response body", async () => {
       await withMockCortex(
         {
           "/api/analyzer/test-analyzer/run": (_req, res) => {
@@ -552,7 +533,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+          const client = new CortexClient(baseConfig(baseUrl, 5_000), { put: async () => ({ reference: "store:example" }) });
 
           await expect(
             client.runAnalyzerWithFile(
@@ -565,7 +546,7 @@ describe("CortexClient HTTP request path (offline)", () => {
               { tlp: 2, pap: 2 },
             ),
           ).rejects.toThrow(
-            "Cortex API error: HTTP 400 - invalid attachment",
+            "Cortex API error: HTTP 400",
           );
         },
       );
@@ -580,7 +561,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, 5_000));
+          const client = new CortexClient(baseConfig(baseUrl, 5_000), { put: async () => ({ reference: "store:example" }) });
 
           await expect(
             client.runAnalyzerWithFile(
@@ -592,7 +573,7 @@ describe("CortexClient HTTP request path (offline)", () => {
               },
               { tlp: 2, pap: 2 },
             ),
-          ).rejects.toThrow("Cortex API error: HTTP 500");
+          ).rejects.toThrow("Cortex API error: Cortex internal server error");
         },
       );
     });
@@ -665,6 +646,13 @@ describe("job search pagination on the wire", () => {
       expect(url.searchParams.get("range")).toBe(kind === "resource" ? "0-50" : "0-5");
       expect(url.searchParams.getAll("sort")).toEqual(["-createdAt"]);
       expect(body).toEqual({ query: {} });
+    });
+  });
+  it("keeps job search available in read-only mode", async () => {
+    await withMockCortex({ "/api/job/_search": (_req, res) => json(res, 200, []) }, async ({ baseUrl, requests }) => {
+      const client = new CortexClient({ ...baseConfig(baseUrl, 5000), mode: "read-only" });
+      await expect(client.searchJobs({ range: "0-5" })).resolves.toEqual([]);
+      expect(requests).toHaveLength(1);
     });
   });
   it("omits absent paging options and sends an empty query by default", async () => {

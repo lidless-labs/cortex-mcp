@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { BoundedStdioServerTransport } from "./transport.js";
 import { getConfig } from "./config.js";
 import { CortexClient } from "./client.js";
 import { registerAnalyzerTools } from "./tools/analyzers.js";
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
   registerResources(server, client);
   registerPrompts(server);
 
-  const transport = new StdioServerTransport();
+  const transport = new BoundedStdioServerTransport();
   // Strip the draft-07 `$schema` the MCP SDK stamps on tool schemas; Anthropic
   // rejects it ("must match JSON Schema draft 2020-12") when the full tool set
   // is sent, e.g. on subagent spawns. Intercept tools/list output here.

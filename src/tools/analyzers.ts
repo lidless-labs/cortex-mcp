@@ -1,5 +1,6 @@
+import { MAX_FILE_BYTES, readAnalysisFile, formatCortexData } from "../safety.js";
 import { z } from "zod";
-import { readFile, realpath } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
 import { basename, resolve, sep } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CortexClient } from "../client.js";
@@ -57,12 +58,13 @@ export function registerAnalyzerTools(
     "List all enabled analyzers, optionally filtered by data type",
     {
       dataType: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe(
           "Filter by supported data type (ip, domain, hash, url, file, mail, fqdn, etc.)",
         ),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async ({ dataType }) => {
       try {
         let analyzers = await client.listAnalyzers();
@@ -85,7 +87,7 @@ export function registerAnalyzerTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(summary, null, 2),
+              text: formatCortexData(summary),
             },
           ],
         };
@@ -94,7 +96,7 @@ export function registerAnalyzerTools(
           content: [
             {
               type: "text" as const,
-              text: `Error listing analyzers: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error listing analyzers: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -107,8 +109,9 @@ export function registerAnalyzerTools(
     "cortex_get_analyzer",
     "Get details about a specific analyzer by ID",
     {
-      analyzerId: z.string().describe("The analyzer ID"),
+      analyzerId: z.string().max(65_536).describe("The analyzer ID"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async ({ analyzerId }) => {
       try {
         const analyzer = await client.getAnalyzer(analyzerId);
@@ -116,7 +119,13 @@ export function registerAnalyzerTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(analyzer, null, 2),
+              text: formatCortexData({
+                id: analyzer.id, name: analyzer.name, version: analyzer.version,
+                description: analyzer.description, dataTypeList: analyzer.dataTypeList,
+                rate: analyzer.rate, rateUnit: analyzer.rateUnit,
+                maxTlp: analyzer.maxTlp, maxPap: analyzer.maxPap,
+                workerDefinitionId: analyzer.workerDefinitionId, jobCache: analyzer.jobCache,
+              }),
             },
           ],
         };
@@ -125,7 +134,7 @@ export function registerAnalyzerTools(
           content: [
             {
               type: "text" as const,
-              text: `Error getting analyzer: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error getting analyzer: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -138,10 +147,10 @@ export function registerAnalyzerTools(
     "cortex_run_analyzer",
     "Submit an observable to a specific analyzer for analysis",
     {
-      analyzerId: z.string().describe("The analyzer ID to run"),
+      analyzerId: z.string().max(65_536).describe("The analyzer ID to run"),
       dataType: z.enum(DATA_TYPES).describe("The observable data type"),
       data: z
-        .string()
+        .string().max(65_536)
         .describe("The observable value (IP, domain, hash, URL, etc.)"),
       tlp: z
         .number()
@@ -158,10 +167,11 @@ export function registerAnalyzerTools(
         .max(3)
         .describe("Permissible Actions Protocol level (0-3)"),
       message: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe("Optional context message for the analysis"),
     },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     async ({ analyzerId, dataType, data, tlp, pap, message }) => {
       try {
         const job = await client.runAnalyzer(analyzerId, {
@@ -175,15 +185,13 @@ export function registerAnalyzerTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   jobId: job.id,
                   status: job.status,
                   analyzerId: job.analyzerId,
                   message: `Analysis job submitted. Use cortex_get_job or cortex_wait_and_get_report with jobId "${job.id}" to get results.`,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -193,7 +201,7 @@ export function registerAnalyzerTools(
           content: [
             {
               type: "text" as const,
-              text: `Error running analyzer: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error running analyzer: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -206,9 +214,9 @@ export function registerAnalyzerTools(
     "cortex_run_analyzer_by_name",
     "Run an analyzer by name instead of ID (convenience wrapper)",
     {
-      analyzerName: z.string().describe("The analyzer name to search for"),
+      analyzerName: z.string().max(65_536).describe("The analyzer name to search for"),
       dataType: z.enum(DATA_TYPES).describe("The observable data type"),
-      data: z.string().describe("The observable value"),
+      data: z.string().max(65_536).describe("The observable value"),
       tlp: z
         .number()
         .int()
@@ -224,6 +232,7 @@ export function registerAnalyzerTools(
         .default(2)
         .describe("Permissible Actions Protocol level (default: 2)"),
     },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     async ({ analyzerName, dataType, data, tlp, pap }) => {
       try {
         const analyzers = await client.listAnalyzers();
@@ -238,7 +247,7 @@ export function registerAnalyzerTools(
             content: [
               {
                 type: "text" as const,
-                text: `No analyzer found matching "${analyzerName}" that supports data type "${dataType}". Use cortex_list_analyzers to see available analyzers.`,
+                text: formatCortexData(`No analyzer found matching "${analyzerName}" that supports data type "${dataType}". Use cortex_list_analyzers to see available analyzers.`),
               },
             ],
             isError: true,
@@ -256,15 +265,13 @@ export function registerAnalyzerTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   jobId: job.id,
                   status: job.status,
                   analyzerUsed: { id: match.id, name: match.name },
                   message: `Analysis job submitted to "${match.name}". Use cortex_wait_and_get_report with jobId "${job.id}" to get results.`,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -274,7 +281,7 @@ export function registerAnalyzerTools(
           content: [
             {
               type: "text" as const,
-              text: `Error running analyzer by name: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error running analyzer by name: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -287,23 +294,23 @@ export function registerAnalyzerTools(
     "cortex_run_analyzer_file",
     "Submit a file to a specific analyzer for analysis. Provide a file path or base64-encoded content.",
     {
-      analyzerId: z.string().describe("The analyzer ID to run"),
+      analyzerId: z.string().max(65_536).describe("The analyzer ID to run"),
       filePath: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe(
           "Path to the file to analyze. Confined to the CORTEX_FILE_BASE_DIR directory; paths outside it (or filesystem reads when CORTEX_FILE_BASE_DIR is unset) are refused. Use fileBase64 for arbitrary content.",
         ),
       fileBase64: z
-        .string()
+        .string().max(4 * Math.ceil(MAX_FILE_BYTES / 3))
         .optional()
         .describe("Base64-encoded file content (alternative to filePath)"),
       filename: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe("Filename (required with fileBase64, auto-detected from filePath)"),
       contentType: z
-        .string()
+        .string().max(65_536)
         .default("application/octet-stream")
         .describe("MIME type of the file (default: application/octet-stream)"),
       tlp: z
@@ -321,10 +328,11 @@ export function registerAnalyzerTools(
         .default(2)
         .describe("Permissible Actions Protocol level (0-3)"),
       message: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe("Optional context message for the analysis"),
     },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     async ({ analyzerId, filePath, fileBase64, filename, contentType, tlp, pap, message }) => {
       try {
         let content: Buffer;
@@ -356,14 +364,14 @@ export function registerAnalyzerTools(
               content: [
                 {
                   type: "text" as const,
-                  text: `Refused to read file: ${reason}`,
+                  text: formatCortexData(`Refused to read file: ${reason}`),
                 },
               ],
               isError: true,
             };
           }
 
-          content = await readFile(safePath);
+          content = await readAnalysisFile(safePath);
           name = filename ?? basename(safePath);
         } else if (fileBase64) {
           if (!filename) {
@@ -377,7 +385,9 @@ export function registerAnalyzerTools(
               isError: true,
             };
           }
+          if (fileBase64.length > 4 * Math.ceil(MAX_FILE_BYTES / 3)) throw new Error("Analysis file exceeds byte limit");
           content = Buffer.from(fileBase64, "base64");
+          if (content.length > MAX_FILE_BYTES) throw new Error("Analysis file exceeds byte limit");
           name = filename;
         } else {
           return {
@@ -401,7 +411,7 @@ export function registerAnalyzerTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   jobId: job.id,
                   status: job.status,
@@ -410,8 +420,6 @@ export function registerAnalyzerTools(
                   fileSize: content.length,
                   message: `File analysis job submitted. Use cortex_wait_and_get_report with jobId "${job.id}" to get results.`,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -421,7 +429,7 @@ export function registerAnalyzerTools(
           content: [
             {
               type: "text" as const,
-              text: `Error running file analysis: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error running file analysis: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
