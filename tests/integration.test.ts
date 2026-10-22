@@ -25,6 +25,7 @@ describe.skipIf(!shouldRun)("Integration: Live Cortex Instance", () => {
       verifySsl: false,
       timeout: 30000,
       allowDestructive: false,
+      mode: process.env.CORTEX_MODE === "write" ? "write" : "read-only",
       maxFanout: 10,
     };
     client = new CortexClient(config);
@@ -283,39 +284,6 @@ describe.skipIf(!shouldRun)("Integration: Live Cortex Instance", () => {
       expect(user.id).toBe(users[0].id);
     });
 
-    it("should renew a user API key", async () => {
-      // Renew the org admin key
-      const users = await client.listUsers();
-      const orgAdmin = users.find((u) => u.roles.includes("orgadmin"));
-      if (!orgAdmin) {
-        console.log("No org admin user found, skipping key renewal test");
-        return;
-      }
-
-      const newKey = await client.renewUserKey(orgAdmin.id);
-      expect(newKey).toBeDefined();
-      expect(newKey.length).toBeGreaterThan(10);
-      console.log(
-        `Renewed key for ${orgAdmin.id}: ${newKey.slice(0, 8)}...`,
-      );
-
-      // Update the client's API key since we just invalidated it
-      // (The test framework handles this through the superadmin key)
-    });
-
-    it("should get a user API key", async () => {
-      const users = await client.listUsers();
-      const orgAdmin = users.find((u) => u.roles.includes("orgadmin"));
-      if (!orgAdmin) {
-        console.log("No org admin user found, skipping key get test");
-        return;
-      }
-
-      const key = await client.getUserKey(orgAdmin.id);
-      expect(key).toBeDefined();
-      expect(key.length).toBeGreaterThan(10);
-      console.log(`Got key for ${orgAdmin.id}: ${key.slice(0, 8)}...`);
-    });
   });
 
   // ── Error handling ──
@@ -328,6 +296,7 @@ describe.skipIf(!shouldRun)("Integration: Live Cortex Instance", () => {
         verifySsl: false,
         timeout: 10000,
         allowDestructive: false,
+      mode: process.env.CORTEX_MODE === "write" ? "write" : "read-only",
         maxFanout: 10,
       };
       const badClient = new CortexClient(badConfig);

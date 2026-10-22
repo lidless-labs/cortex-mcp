@@ -8,6 +8,18 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- State-changing requests now require `CORTEX_MODE=write`. Destructive deletion
+  paths require destructive permission, and additional administration and cleanup
+  actions require explicit confirmation.
+- Key retrieval has been removed. Key rotation requires an approved credential
+  store adapter and returns only a store reference and fingerprint.
+- External data is framed and bounded, upstream error bodies are omitted, and
+  request, response and upload sizes are limited.
+- Network observable submissions validate destinations with bounded DNS checks.
+  Worker network policy remains necessary for redirects and later DNS changes.
+- Installer credentials use silent input, stdin transfer and systemd credentials.
+  CI actions are pinned and tag publishing uses OIDC with provenance.
+
 - CI now fails when `npm test` fails. The test step no longer sets
   `continue-on-error`, so a failing suite blocks the tag-triggered npm publish
   job, which depends on the test job.

@@ -1,3 +1,4 @@
+import { formatCortexData } from "../safety.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CortexClient } from "../client.js";
@@ -11,7 +12,7 @@ export function registerResponderDefinitionTools(
     "List all available responder definitions (installed but not necessarily enabled). Filter by data type or find responders that require no API keys.",
     {
       dataType: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe("Filter by supported data type (case, case_task, case_artifact, alert, etc.)"),
       freeOnly: z
@@ -19,7 +20,7 @@ export function registerResponderDefinitionTools(
         .optional()
         .describe("If true, only return responders that require no configuration/API keys"),
       search: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe("Search responder names and descriptions (case-insensitive)"),
       limit: z
@@ -30,6 +31,7 @@ export function registerResponderDefinitionTools(
         .default(50)
         .describe("Maximum results to return (default: 50)"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async ({ dataType, freeOnly, search, limit }) => {
       try {
         let defs = await client.listResponderDefinitions();
@@ -77,14 +79,12 @@ export function registerResponderDefinitionTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   total,
                   returned: summary.length,
                   definitions: summary,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -94,7 +94,7 @@ export function registerResponderDefinitionTools(
           content: [
             {
               type: "text" as const,
-              text: `Error listing responder definitions: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error listing responder definitions: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -108,10 +108,10 @@ export function registerResponderDefinitionTools(
     "Enable a responder definition in the current organization. Provide configuration values for any required fields.",
     {
       definitionId: z
-        .string()
+        .string().max(65_536)
         .describe("The responder definition ID (e.g., 'Mailer_1_0')"),
       configuration: z
-        .record(z.string(), z.unknown())
+        .record(z.string().max(65_536), z.unknown())
         .default({})
         .describe("Configuration key-value pairs. Check cortex_list_responder_definitions for required fields."),
       rate: z
@@ -125,6 +125,7 @@ export function registerResponderDefinitionTools(
         .default("Day")
         .describe("Rate limit unit (default: Day)"),
     },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     async ({ definitionId, configuration, rate, rateUnit }) => {
       try {
         const responder = await client.enableResponder({
@@ -138,7 +139,7 @@ export function registerResponderDefinitionTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   id: responder.id,
                   name: responder.name,
@@ -146,8 +147,6 @@ export function registerResponderDefinitionTools(
                   dataTypes: responder.dataTypeList,
                   message: `Responder "${responder.name}" enabled successfully. It can act on: ${responder.dataTypeList.join(", ")}`,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -157,7 +156,7 @@ export function registerResponderDefinitionTools(
           content: [
             {
               type: "text" as const,
-              text: `Error enabling responder: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error enabling responder: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -170,18 +169,21 @@ export function registerResponderDefinitionTools(
     "cortex_disable_responder",
     "Disable (remove) an enabled responder from the current organization",
     {
+      confirm: z.boolean().default(false).describe("Explicit confirmation required for removal"),
       responderId: z
-        .string()
+        .string().max(65_536)
         .describe("The enabled responder's ID (the internal ID from cortex_list_responders, not the definition ID)"),
     },
-    async ({ responderId }) => {
+    { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
+    async ({ responderId, confirm }) => {
       try {
+        if (!confirm) throw new Error("Responder removal requires confirm=true");
         await client.deleteResponder(responderId);
         return {
           content: [
             {
               type: "text" as const,
-              text: `Responder "${responderId}" has been disabled and removed from the organization.`,
+              text: formatCortexData(`Responder "${responderId}" has been disabled and removed from the organization.`),
             },
           ],
         };
@@ -190,7 +192,7 @@ export function registerResponderDefinitionTools(
           content: [
             {
               type: "text" as const,
-              text: `Error disabling responder: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error disabling responder: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,

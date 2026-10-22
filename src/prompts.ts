@@ -1,3 +1,4 @@
+import { formatCortexData } from "./safety.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
@@ -7,18 +8,14 @@ export function registerPrompts(server: McpServer): void {
     "Guided workflow for analyzing an observable through Cortex analyzers",
     {
       observable: z
-        .string()
+        .string().max(65_536)
         .describe("The observable value to analyze (IP, domain, hash, URL, etc.)"),
       context: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe("Optional context about where this observable was found"),
     },
     ({ observable, context }) => {
-      const contextLine = context
-        ? `\nContext: ${context}\n`
-        : "";
-
       return {
         messages: [
           {
@@ -27,7 +24,7 @@ export function registerPrompts(server: McpServer): void {
               type: "text",
               text: `Analyze the following observable using Cortex:
 
-Observable: ${observable}${contextLine}
+${formatCortexData({ observable, context })}
 
 Please follow these steps:
 1. First, determine the data type of this observable (ip, domain, url, hash, mail, fqdn, etc.)
@@ -50,9 +47,9 @@ Please follow these steps:
     "investigate-ioc",
     "Deep investigation workflow for a suspicious indicator of compromise",
     {
-      ioc: z.string().describe("The IOC value to investigate"),
+      ioc: z.string().max(65_536).describe("The IOC value to investigate"),
       iocType: z
-        .string()
+        .string().max(65_536)
         .describe("The IOC type (ip, domain, url, hash, mail, fqdn)"),
     },
     ({ ioc, iocType }) => {
@@ -64,8 +61,7 @@ Please follow these steps:
               type: "text",
               text: `Perform a deep investigation of the following IOC using Cortex:
 
-IOC: ${ioc}
-Type: ${iocType}
+${formatCortexData({ ioc, iocType })}
 
 Investigation steps:
 1. Use cortex_analyze_observable to run all applicable analyzers against this IOC
@@ -95,7 +91,7 @@ Investigation steps:
     "Guided workflow to set up a fresh Cortex instance with analyzers and responders",
     {
       focus: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe("Focus area: 'all' (default), 'free-only' (no API keys), 'ip', 'domain', 'hash', 'file', 'mail'"),
     },
@@ -113,7 +109,7 @@ Investigation steps:
             content: {
               type: "text",
               text: `Set up this Cortex instance with analyzers and responders.
-Focus: ${focusArea}
+${formatCortexData({ focus: focusArea })}
 
 Steps:
 1. Use cortex_get_status to verify the instance is healthy
@@ -121,7 +117,7 @@ Steps:
 3. Use cortex_list_analyzer_definitions${freeFilter}${dtFilter} to find available analyzers
 4. For analyzers that require NO configuration (freeOnly=true):
    - Enable them with cortex_enable_analyzer using empty configuration {}
-   - These are safe to enable immediately
+   - Enable only when the operator has authorized changes and CORTEX_MODE=write
 5. For analyzers that need API keys:
    - List their required configurationItems
    - Ask the user which API keys they have available
@@ -151,10 +147,10 @@ Provide a summary table of:
     "Guided workflow for triaging a security alert using Cortex analysis",
     {
       alertDescription: z
-        .string()
+        .string().max(65_536)
         .describe("Description of the alert or incident"),
       observables: z
-        .string()
+        .string().max(65_536)
         .describe("Comma-separated list of observables (IPs, domains, hashes, URLs) from the alert"),
     },
     ({ alertDescription, observables }) => {
@@ -171,8 +167,7 @@ Provide a summary table of:
               type: "text",
               text: `Triage the following security alert using Cortex:
 
-Alert: ${alertDescription}
-Observables: ${observableList.join(", ")}
+${formatCortexData({ alertDescription, observables: observableList })}
 
 Triage workflow:
 1. For each observable (${observableList.length} total):

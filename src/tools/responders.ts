@@ -1,3 +1,4 @@
+import { formatCortexData } from "../safety.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CortexClient } from "../client.js";
@@ -11,10 +12,11 @@ export function registerResponderTools(
     "List all enabled responders, optionally filtered by data type",
     {
       dataType: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe("Filter by supported data type"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async ({ dataType }) => {
       try {
         let responders = await client.listResponders();
@@ -37,7 +39,7 @@ export function registerResponderTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(summary, null, 2),
+              text: formatCortexData(summary),
             },
           ],
         };
@@ -46,7 +48,7 @@ export function registerResponderTools(
           content: [
             {
               type: "text" as const,
-              text: `Error listing responders: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error listing responders: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -59,15 +61,15 @@ export function registerResponderTools(
     "cortex_run_responder",
     "Execute a responder action against a TheHive entity (case, task, artifact, alert). DESTRUCTIVE: responders perform real-world side effects (blocking IPs, sending mail, isolating hosts). Gated behind the CORTEX_ALLOW_DESTRUCTIVE env var AND confirm=true.",
     {
-      responderId: z.string().describe("The responder ID to execute"),
+      responderId: z.string().max(65_536).describe("The responder ID to execute"),
       objectType: z
         .enum(["case", "case_task", "case_artifact", "alert"])
         .describe("The type of TheHive entity to act on"),
       objectId: z
-        .string()
+        .string().max(65_536)
         .describe("The ID of the entity from TheHive"),
       parameters: z
-        .record(z.string(), z.unknown())
+        .record(z.string().max(65_536), z.unknown())
         .optional()
         .describe("Optional responder-specific parameters"),
       confirm: z
@@ -77,6 +79,7 @@ export function registerResponderTools(
           "Must be set to true to actually run the responder. Defaults to false as a safety guard against accidental side effects.",
         ),
     },
+    { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     async ({ responderId, objectType, objectId, parameters, confirm }) => {
       try {
         if (!client.settings.allowDestructive) {
@@ -96,7 +99,7 @@ export function registerResponderTools(
             content: [
               {
                 type: "text" as const,
-                text: `Responder NOT run. This is a destructive action (real-world side effects). Re-call with confirm=true to execute responder "${responderId}" against ${objectType} "${objectId}".`,
+                text: formatCortexData(`Responder NOT run. This is a destructive action (real-world side effects). Re-call with confirm=true to execute responder "${responderId}" against ${objectType} "${objectId}".`),
               },
             ],
             isError: true,
@@ -113,7 +116,7 @@ export function registerResponderTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   actionJobId: actionJob.id,
                   status: actionJob.status,
@@ -121,8 +124,6 @@ export function registerResponderTools(
                   responderName: actionJob.responderName,
                   message: `Responder action submitted. Job ID: "${actionJob.id}"`,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -132,7 +133,7 @@ export function registerResponderTools(
           content: [
             {
               type: "text" as const,
-              text: `Error running responder: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error running responder: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,

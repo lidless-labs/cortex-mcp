@@ -1,3 +1,4 @@
+import { formatCortexData } from "../safety.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CortexClient } from "../client.js";
@@ -10,8 +11,9 @@ export function registerJobTools(
     "cortex_get_job",
     "Get the status and details of an analysis job",
     {
-      jobId: z.string().describe("The job ID to look up"),
+      jobId: z.string().max(65_536).describe("The job ID to look up"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async ({ jobId }) => {
       try {
         const job = await client.getJob(jobId);
@@ -19,7 +21,7 @@ export function registerJobTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(job, null, 2),
+              text: formatCortexData(job),
             },
           ],
         };
@@ -28,7 +30,7 @@ export function registerJobTools(
           content: [
             {
               type: "text" as const,
-              text: `Error getting job: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error getting job: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -41,8 +43,9 @@ export function registerJobTools(
     "cortex_get_job_report",
     "Get the full report of a completed analysis job",
     {
-      jobId: z.string().describe("The job ID to get the report for"),
+      jobId: z.string().max(65_536).describe("The job ID to get the report for"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async ({ jobId }) => {
       try {
         const report = await client.getJobReport(jobId);
@@ -50,7 +53,7 @@ export function registerJobTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(report, null, 2),
+              text: formatCortexData(report),
             },
           ],
         };
@@ -59,7 +62,7 @@ export function registerJobTools(
           content: [
             {
               type: "text" as const,
-              text: `Error getting job report: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error getting job report: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -72,7 +75,7 @@ export function registerJobTools(
     "cortex_wait_and_get_report",
     "Wait for a job to complete and return the full report (with polling timeout)",
     {
-      jobId: z.string().describe("The job ID to wait for"),
+      jobId: z.string().max(65_536).describe("The job ID to wait for"),
       timeout: z
         .number()
         .int()
@@ -81,6 +84,7 @@ export function registerJobTools(
         .default(300)
         .describe("Timeout in seconds (default: 300, max: 3600)"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async ({ jobId, timeout }) => {
       try {
         const report = await client.waitAndGetReport(jobId, timeout);
@@ -94,7 +98,7 @@ export function registerJobTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   jobId: report.id,
                   status: report.status,
@@ -102,8 +106,6 @@ export function registerJobTools(
                   taxonomies: taxonomySummary,
                   fullReport: report.report,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -113,7 +115,7 @@ export function registerJobTools(
           content: [
             {
               type: "text" as const,
-              text: `Error waiting for report: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error waiting for report: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -127,11 +129,11 @@ export function registerJobTools(
     "List recent analysis jobs with optional filters",
     {
       dataType: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe("Filter by data type"),
       analyzerName: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe("Filter by analyzer name"),
       limit: z
@@ -142,12 +144,13 @@ export function registerJobTools(
         .default(50)
         .describe("Maximum number of jobs to return (default: 50)"),
       status: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe(
           "Filter by status (Waiting, InProgress, Success, Failure, Deleted)",
         ),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async ({ dataType, analyzerName, limit, status }) => {
       try {
         const must: Record<string, unknown>[] = [];
@@ -191,7 +194,7 @@ export function registerJobTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(summary, null, 2),
+              text: formatCortexData(summary),
             },
           ],
         };
@@ -200,7 +203,7 @@ export function registerJobTools(
           content: [
             {
               type: "text" as const,
-              text: `Error listing jobs: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error listing jobs: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -213,8 +216,9 @@ export function registerJobTools(
     "cortex_get_job_artifacts",
     "Get artifacts (extracted observables/IOCs) from a completed analysis job",
     {
-      jobId: z.string().describe("The job ID to get artifacts for"),
+      jobId: z.string().max(65_536).describe("The job ID to get artifacts for"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async ({ jobId }) => {
       try {
         const artifacts = await client.getJobArtifacts(jobId);
@@ -222,7 +226,7 @@ export function registerJobTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(artifacts, null, 2),
+              text: formatCortexData(artifacts),
             },
           ],
         };
@@ -231,7 +235,7 @@ export function registerJobTools(
           content: [
             {
               type: "text" as const,
-              text: `Error getting job artifacts: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error getting job artifacts: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -244,7 +248,7 @@ export function registerJobTools(
     "cortex_delete_job",
     "Delete a specific analysis job by ID. DESTRUCTIVE: requires confirm=true.",
     {
-      jobId: z.string().describe("The job ID to delete"),
+      jobId: z.string().max(65_536).describe("The job ID to delete"),
       confirm: z
         .boolean()
         .default(false)
@@ -252,6 +256,7 @@ export function registerJobTools(
           "Must be set to true to actually delete the job. Defaults to false as a safety guard.",
         ),
     },
+    { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
     async ({ jobId, confirm }) => {
       try {
         if (!confirm) {
@@ -259,7 +264,7 @@ export function registerJobTools(
             content: [
               {
                 type: "text" as const,
-                text: `Job NOT deleted. Deletion is irreversible. Re-call with confirm=true to delete job "${jobId}".`,
+                text: formatCortexData(`Job NOT deleted. Deletion is irreversible. Re-call with confirm=true to delete job "${jobId}".`),
               },
             ],
             isError: true,
@@ -270,7 +275,7 @@ export function registerJobTools(
           content: [
             {
               type: "text" as const,
-              text: `Job "${jobId}" deleted successfully.`,
+              text: formatCortexData(`Job "${jobId}" deleted successfully.`),
             },
           ],
         };
@@ -279,7 +284,7 @@ export function registerJobTools(
           content: [
             {
               type: "text" as const,
-              text: `Error deleting job: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error deleting job: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -302,6 +307,7 @@ export function registerJobTools(
         .min(1)
         .optional()
         .describe("Delete jobs older than this many days"),
+      confirm: z.boolean().default(false).describe("Explicit confirmation required when dryRun=false"),
       dryRun: z
         .boolean()
         .default(true)
@@ -314,8 +320,10 @@ export function registerJobTools(
         .default(100)
         .describe("Maximum jobs to process (default: 100)"),
     },
-    async ({ status, olderThanDays, dryRun, limit }) => {
+    { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+    async ({ status, olderThanDays, dryRun, limit, confirm }) => {
       try {
+        if (!dryRun && !confirm) throw new Error("Job cleanup requires confirm=true when dryRun=false");
         if (!status && !olderThanDays) {
           return {
             content: [
@@ -344,10 +352,10 @@ export function registerJobTools(
           sort: ["-createdAt"],
         });
 
-        let matchingJobs = jobs;
+        let matchingJobs = jobs.slice(0, limit);
         if (olderThanDays) {
           const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
-          matchingJobs = jobs.filter(
+          matchingJobs = matchingJobs.filter(
             (j) => (j.createdAt ?? 0) < cutoff,
           );
         }
@@ -357,11 +365,11 @@ export function registerJobTools(
             content: [
               {
                 type: "text" as const,
-                text: JSON.stringify(
+                text: formatCortexData(
                   {
                     dryRun: true,
                     matchingJobs: matchingJobs.length,
-                    message: `Found ${matchingJobs.length} jobs matching criteria. Set dryRun=false to delete them.`,
+                    message: `Found ${matchingJobs.length} jobs matching criteria. Set dryRun=false and confirm=true to delete them.`,
                     jobs: matchingJobs.map((j) => ({
                       id: j.id,
                       status: j.status,
@@ -372,8 +380,6 @@ export function registerJobTools(
                         : undefined,
                     })),
                   },
-                  null,
-                  2,
                 ),
               },
             ],
@@ -381,9 +387,12 @@ export function registerJobTools(
         }
 
         // Actually delete
-        const results = await Promise.allSettled(
-          matchingJobs.map((j) => client.deleteJob(j.id)),
-        );
+        const results: PromiseSettledResult<void>[] = [];
+        for (let start = 0; start < matchingJobs.length; start += 5) {
+          results.push(...await Promise.allSettled(
+            matchingJobs.slice(start, start + 5).map((j) => client.deleteJob(j.id)),
+          ));
+        }
 
         const deleted = results.filter((r) => r.status === "fulfilled").length;
         const failed = results.filter((r) => r.status === "rejected").length;
@@ -392,7 +401,7 @@ export function registerJobTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   dryRun: false,
                   deleted,
@@ -400,8 +409,6 @@ export function registerJobTools(
                   total: matchingJobs.length,
                   message: `Deleted ${deleted}/${matchingJobs.length} jobs.${failed > 0 ? ` ${failed} deletions failed.` : ""}`,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -411,7 +418,7 @@ export function registerJobTools(
           content: [
             {
               type: "text" as const,
-              text: `Error cleaning up jobs: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error cleaning up jobs: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
