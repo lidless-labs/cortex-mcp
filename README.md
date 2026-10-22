@@ -22,7 +22,7 @@
   <img src="https://shieldcn.dev/badge/license-MIT-green.svg" alt="MIT License">
 </p>
 
-cortex-mcp is a Model Context Protocol (MCP) server for [Cortex](https://docs.strangebee.com/cortex/), the observable analysis and active-response engine from StrangeBee/TheHive Project. It exists because analysts already drive Cortex by hand through its web UI or raw REST API, and an AI client can do that work faster: detonate an indicator across every applicable analyzer, aggregate the taxonomy verdicts, and pull artifacts without anyone clicking through a dozen jobs. It differs from a generic HTTP bridge by exposing Cortex's real domain model as 31 typed MCP tools, auto-detecting observable data types, fanning out analysis with a cap, and gating every destructive action (responders, deletes, file reads) behind explicit confirmation.
+cortex-mcp is a Model Context Protocol (MCP) server for [Cortex](https://docs.strangebee.com/cortex/), the observable analysis and active-response engine from StrangeBee/TheHive Project. It exists because analysts already drive Cortex by hand through its web UI or raw REST API, and an AI client can do that work faster: detonate an indicator across every applicable analyzer, aggregate the taxonomy verdicts, and pull artifacts without anyone clicking through a dozen jobs. It differs from a generic HTTP bridge by exposing Cortex's real domain model as 30 typed MCP tools, auto-detecting observable data types, fanning out analysis with a cap, and gating every destructive action (responders, deletes, file reads) behind explicit confirmation.
 
 ## What it does
 
@@ -165,7 +165,7 @@ export CORTEX_API_KEY=your-org-admin-key
 npx -y thehive-cortex-mcp     # or `npm start` from a source checkout
 ```
 
-## MCP Tools (31)
+## MCP Tools (30)
 
 ### Status
 
@@ -216,7 +216,7 @@ npx -y thehive-cortex-mcp     # or `npm start` from a source checkout
 |------|-------------|
 | `cortex_list_responder_definitions` | Browse all available responder definitions with filtering |
 | `cortex_enable_responder` | Enable a responder definition with configuration |
-| `cortex_disable_responder` | Disable (remove) an enabled responder |
+| `cortex_disable_responder` | Disable (remove) an enabled responder (requires `confirm=true`) |
 
 ### Bulk Operations
 
@@ -240,8 +240,7 @@ npx -y thehive-cortex-mcp     # or `npm start` from a source checkout
 | `cortex_list_users` | List all users across organizations |
 | `cortex_get_user` | Get user details |
 | `cortex_create_user` | Create a new user in an organization |
-| `cortex_renew_user_key` | Generate a new API key for a user (invalidates previous) |
-| `cortex_get_user_key` | Retrieve a user's current API key |
+| `cortex_renew_user_key` | Rotate a key through an operator-configured credential store (requires `confirm=true`, returns a receipt) |
 
 ## MCP Resources (4)
 
@@ -265,13 +264,15 @@ npx -y thehive-cortex-mcp     # or `npm start` from a source checkout
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `CORTEX_URL` | Yes | - | Absolute HTTP or HTTPS base URL without embedded credentials (e.g., `http://cortex.example.com:9001`) |
+| `CORTEX_URL` | Yes | - | Absolute HTTP or HTTPS base URL without embedded credentials, query string or fragment (e.g., `http://cortex.example.com:9001`) |
 | `CORTEX_API_KEY` | Yes | - | API key for normal operations (org admin level) |
 | `CORTEX_SUPERADMIN_KEY` | No | - | Superadmin API key for org/user/definition management |
+| `CORTEX_MODE` | No | `read-only` | Accepts `read-only` or `write`. All state changes, including analyzer submissions and administration, require `write`. Read-only POST job searches remain available. |
+| `CORTEX_ALLOW_PRIVATE_TARGETS` | No | `false` | Accepts `true` or `false`. Explicit operator permission to submit private or special-purpose network targets. Public network targets are checked after DNS resolution. |
 | `CORTEX_VERIFY_SSL` | No | `true` | Accepts `true` or `false` (case-insensitive). Set to `false` to skip SSL verification. Applied via a scoped HTTP dispatcher for Cortex requests only; it does **not** disable TLS verification process-wide. |
 | `CORTEX_TIMEOUT` | No | `30` | Request timeout as a positive integer from 1 to 300 seconds. Wait-report calls (`cortex_wait_and_get_report`, and `cortex_analyze_observable` while it waits for reports) instead allow their requested `timeout` plus 10 seconds, if that is longer. |
 | `CORTEX_FILE_BASE_DIR` | No | - | Absolute base directory that `cortex_run_analyzer_file` may read files from. `filePath` is confined to this directory (realpath checked to defeat symlink/`..` escapes); paths outside it are refused. When unset, reading files by path is **disabled** and you must submit file content via `fileBase64`. |
-| `CORTEX_ALLOW_DESTRUCTIVE` | No | `0` | Set to `1` (or `true`) to permit running responders (`cortex_run_responder`), which cause real-world side effects. Off by default. Responders also require `confirm=true` per call. |
+| `CORTEX_ALLOW_DESTRUCTIVE` | No | `0` | Set to `1` (or `true`) to permit responder execution and deletion of jobs, analyzers or responders. Requires write mode. |
 | `CORTEX_MAX_FANOUT` | No | `10` | Positive safe integer from 1 to 9,007,199,254,740,991. Maximum number of analyzers `cortex_analyze_observable` will submit to in a single call when fanning out. Invalid values fail at startup. |
 
 ### Security and safety gates
@@ -279,10 +280,43 @@ npx -y thehive-cortex-mcp     # or `npm start` from a source checkout
 This server can trigger real-world actions and submit observables to third-party services, so several capabilities are secured by default:
 
 - **Arbitrary file reads are blocked.** `cortex_run_analyzer_file` only reads files inside `CORTEX_FILE_BASE_DIR` (realpath-confined to defeat symlink/`..` escapes). With no base dir configured, path-based reads are refused; use `fileBase64` to submit content explicitly.
+- **Writes are opt-in.** Set `CORTEX_MODE=write` before submitting analysis or changing configuration. POST job searches remain available in read-only mode.
 - **Responders are gated.** `cortex_run_responder` requires both `CORTEX_ALLOW_DESTRUCTIVE=1` in the environment **and** `confirm=true` in the call.
-- **Single-item destructive tools require confirmation.** `cortex_delete_job` and `cortex_disable_analyzer` require `confirm=true`.
+- **Changes require confirmation where indicated.** User creation with roles, key rotation, organization locking, responder removal, job deletion, analyzer removal and cleanup with `dryRun=false` require `confirm=true`. Deletion and responder execution also require `CORTEX_ALLOW_DESTRUCTIVE=1`.
 - **Bulk analysis is conservative.** `cortex_analyze_observable` does **not** fan out to every analyzer by default. Pass an explicit `analyzers` allowlist, or set `fanOut=true` to run all applicable analyzers (capped by `CORTEX_MAX_FANOUT`).
 - **SSL verification is scoped.** Disabling `CORTEX_VERIFY_SSL` relaxes TLS only for Cortex connections, never for the whole Node process.
+
+### Result and input limits
+
+Responses are limited to 4 MiB while streaming. JSON request bodies are limited to
+1 MiB, incoming MCP message lines to 16 MiB before parsing, and file uploads to 10 MiB. Path-based files must be regular files within
+the configured base directory. Text arguments are limited to 65,536 characters,
+with a separate encoded-file limit. Tool and resource data is JSON-quoted inside
+escaped `untrusted_cortex_data` blocks, limited to 64 KiB with a truncation marker.
+Resources use `text/plain` for that envelope. Upstream error bodies and status text
+are omitted. Credential-bearing configuration and serialized parameters are omitted. Common
+credential fields are redacted from structured results.
+
+### Credential delivery and worker networking
+
+The Proxmox installer reads keys silently, sends credentials through stdin, and
+stores them with owner-only permissions for systemd `LoadCredential`. The server
+reads `cortex-api-key` and `cortex-url` from `CREDENTIALS_DIRECTORY` when their
+respective environment variables are absent. Environment configuration still works.
+
+For embedded use, pass an operator-approved `CredentialStore` adapter as the second
+`CortexClient` constructor argument. Its `put(userId, key)` method must persist the
+key without logging it and return a non-secret reference. Rotation returns only
+that reference and a SHA-256 fingerprint. A failed store write is reported without
+key material. If it fails after renewal, recover through Cortex administration.
+
+Network-target validation covers IP, domain, FQDN and HTTP/HTTPS URL submissions.
+URL credentials and unsupported schemes are refused. DNS checks have a five-second
+budget and reject any private or special-purpose answer unless explicitly permitted.
+Configure the Cortex workers' network policy to enforce the same destination rules
+on every connection, including redirects and later DNS resolutions. Submission-time
+checks cannot enforce worker-side redirects or DNS changes. Cortex API redirects are
+refused by the client.
 
 ## Examples
 
@@ -308,7 +342,7 @@ to limit which analyzers run.
 
 ```
 Use cortex_cleanup_jobs with status "Failure", dryRun true to preview,
-then dryRun false to delete.
+then dryRun false and confirm true to delete (requires write mode and destructive permission).
 ```
 
 ### Analyze a file
@@ -323,7 +357,10 @@ filePath "/srv/cortex-uploads/suspicious.exe" to scan with YARA rules.
 ### Manage API keys
 
 ```
-Use cortex_renew_user_key with userId "analyst1" to rotate their API key.
+Key retrieval is unavailable. Rotation requires write mode, confirm=true and an
+operator-configured credential store adapter. The stock stdio server has no adapter
+and refuses rotation before contacting Cortex. Manage keys through Cortex administration
+until a store adapter is configured.
 ```
 
 ### Triage a security alert
@@ -356,6 +393,14 @@ detected" and observables "185.220.101.42, evil.example.com, 44d88612fea8a8f36de
 bash -c "$(wget -qLO - https://raw.githubusercontent.com/lidless-labs/cortex-mcp/main/scripts/proxmox_install.sh)"
 ```
 
+### Release publishing
+
+The tag workflow uses npm trusted publishing and provenance. Configure the package's
+trusted publisher for `lidless-labs/cortex-mcp` and `.github/workflows/ci.yml` on npm
+before the next release. The workflow uses Node 24 and grants OIDC permission only
+to the publish job. It does not use an npm token. Changing this workflow does not
+publish a release or configure the npm account.
+
 ## Why not something else?
 
 - **The Cortex web UI** is built for one analyst clicking through jobs by hand. cortex-mcp puts the same engine behind an AI client, so analysis, taxonomy aggregation, and artifact extraction happen conversationally instead of through a dozen page loads.
@@ -383,6 +428,10 @@ CORTEX_API_KEY=your-key \
 CORTEX_SUPERADMIN_KEY=your-superadmin-key \
 npx vitest run tests/integration.test.ts
 ```
+
+Live lifecycle tests also require `CORTEX_TEST_MUTATIONS=true`, `CORTEX_MODE=write`
+and `CORTEX_ALLOW_DESTRUCTIVE=1`. Use a disposable Cortex instance for these tests.
+They remove the analyzers and responders they create and report cleanup failures.
 
 ## Project Structure
 

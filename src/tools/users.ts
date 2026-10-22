@@ -1,3 +1,4 @@
+import { formatCortexData } from "../safety.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CortexClient } from "../client.js";
@@ -10,6 +11,7 @@ export function registerUserTools(
     "cortex_list_users",
     "List all users across organizations (requires superadmin API key via CORTEX_SUPERADMIN_KEY)",
     {},
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async () => {
       try {
         if (!client.superadminAvailable) {
@@ -39,7 +41,7 @@ export function registerUserTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(summary, null, 2),
+              text: formatCortexData(summary),
             },
           ],
         };
@@ -48,7 +50,7 @@ export function registerUserTools(
           content: [
             {
               type: "text" as const,
-              text: `Error listing users: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error listing users: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -61,8 +63,9 @@ export function registerUserTools(
     "cortex_get_user",
     "Get details about a specific user (requires superadmin API key)",
     {
-      userId: z.string().describe("The user login/ID"),
+      userId: z.string().max(65_536).describe("The user login/ID"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async ({ userId }) => {
       try {
         if (!client.superadminAvailable) {
@@ -82,7 +85,7 @@ export function registerUserTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(user, null, 2),
+              text: formatCortexData(user),
             },
           ],
         };
@@ -91,7 +94,7 @@ export function registerUserTools(
           content: [
             {
               type: "text" as const,
-              text: `Error getting user: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error getting user: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -104,17 +107,19 @@ export function registerUserTools(
     "cortex_create_user",
     "Create a new user in an organization (requires superadmin API key)",
     {
-      login: z.string().describe("User login (used as ID)"),
-      name: z.string().describe("User display name"),
-      organization: z.string().describe("Organization to assign the user to"),
+      login: z.string().max(65_536).describe("User login (used as ID)"),
+      name: z.string().max(65_536).describe("User display name"),
+      organization: z.string().max(65_536).describe("Organization to assign the user to"),
       roles: z
-        .array(z.string())
+        .array(z.string().max(65_536)).max(500)
         .describe(
           'User roles: "read", "analyze", "orgadmin", or "superadmin"',
         ),
-      password: z.string().optional().describe("Optional initial password"),
+      confirm: z.boolean().default(false).describe("Explicit confirmation required to create a user with roles"),
+      password: z.string().max(65_536).optional().describe("Optional initial password"),
     },
-    async ({ login, name, organization, roles, password }) => {
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    async ({ login, name, organization, roles, password, confirm }) => {
       try {
         if (!client.superadminAvailable) {
           return {
@@ -128,6 +133,8 @@ export function registerUserTools(
           };
         }
 
+        if (!confirm) throw new Error("User creation requires confirm=true");
+
         const user = await client.createUser({
           login,
           name,
@@ -140,7 +147,7 @@ export function registerUserTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   id: user.id,
                   name: user.name,
@@ -149,8 +156,6 @@ export function registerUserTools(
                   status: user.status,
                   message: `User "${user.name}" (${user.id}) created in org "${user.organization}".`,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -160,7 +165,7 @@ export function registerUserTools(
           content: [
             {
               type: "text" as const,
-              text: `Error creating user: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error creating user: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -171,11 +176,13 @@ export function registerUserTools(
 
   server.tool(
     "cortex_renew_user_key",
-    "Generate a new API key for a user (invalidates the previous key). Requires superadmin API key.",
+    "Generate a new API key for a user (invalidates the previous key). Requires superadmin API key, confirm=true and an operator-configured credential store. Returns a receipt only.",
     {
-      userId: z.string().describe("The user login/ID to renew the key for"),
+      userId: z.string().max(65_536).describe("The user login/ID to renew the key for"),
+      confirm: z.boolean().default(false).describe("Explicit confirmation required for key rotation"),
     },
-    async ({ userId }) => {
+    { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+    async ({ userId, confirm }) => {
       try {
         if (!client.superadminAvailable) {
           return {
@@ -189,20 +196,18 @@ export function registerUserTools(
           };
         }
 
-        const newKey = await client.renewUserKey(userId);
+        if (!confirm) throw new Error("Key rotation requires confirm=true");
+        const receipt = await client.renewUserKey(userId);
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   userId,
-                  apiKey: newKey,
+                  ...receipt,
                   message: `New API key generated for user "${userId}". The previous key is now invalid.`,
-                  warning: "Store this key securely. It will not be shown again.",
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -212,7 +217,7 @@ export function registerUserTools(
           content: [
             {
               type: "text" as const,
-              text: `Error renewing user key: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error renewing user key: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -221,53 +226,4 @@ export function registerUserTools(
     },
   );
 
-  server.tool(
-    "cortex_get_user_key",
-    "Get the current API key for a user. Requires superadmin API key.",
-    {
-      userId: z.string().describe("The user login/ID"),
-    },
-    async ({ userId }) => {
-      try {
-        if (!client.superadminAvailable) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: "User key management requires CORTEX_SUPERADMIN_KEY environment variable to be set.",
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        const key = await client.getUserKey(userId);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  userId,
-                  apiKey: key,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error getting user key: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
-  );
 }

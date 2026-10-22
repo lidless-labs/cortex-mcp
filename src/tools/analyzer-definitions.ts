@@ -1,3 +1,4 @@
+import { formatCortexData, boundedJsonValue } from "../safety.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CortexClient } from "../client.js";
@@ -11,7 +12,7 @@ export function registerAnalyzerDefinitionTools(
     "List all available analyzer definitions (installed but not necessarily enabled). Filter by data type or find analyzers that require no API keys.",
     {
       dataType: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe("Filter by supported data type (ip, domain, hash, url, file, mail, fqdn, etc.)"),
       freeOnly: z
@@ -19,7 +20,7 @@ export function registerAnalyzerDefinitionTools(
         .optional()
         .describe("If true, only return analyzers that require no configuration/API keys"),
       search: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe("Search analyzer names and descriptions (case-insensitive)"),
       limit: z
@@ -30,6 +31,7 @@ export function registerAnalyzerDefinitionTools(
         .default(50)
         .describe("Maximum results to return (default: 50)"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async ({ dataType, freeOnly, search, limit }) => {
       try {
         let defs = await client.listAnalyzerDefinitions();
@@ -77,14 +79,12 @@ export function registerAnalyzerDefinitionTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   total,
                   returned: summary.length,
                   definitions: summary,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -94,7 +94,7 @@ export function registerAnalyzerDefinitionTools(
           content: [
             {
               type: "text" as const,
-              text: `Error listing analyzer definitions: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error listing analyzer definitions: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -108,10 +108,11 @@ export function registerAnalyzerDefinitionTools(
     "Enable an analyzer definition in the current organization. Provide configuration values for any required fields.",
     {
       definitionId: z
-        .string()
+        .string().max(65_536)
         .describe("The analyzer definition ID (e.g., 'Abuse_Finder_3_0', 'VirusTotal_GetReport_3_1')"),
       configuration: z
-        .record(z.string(), z.unknown())
+        .record(z.string().max(65_536), boundedJsonValue)
+        .refine(value => Object.keys(value).length <= 500, "Too many configuration fields")
         .default({})
         .describe("Configuration key-value pairs (API keys, URLs, etc.). Check cortex_list_analyzer_definitions for required fields."),
       rate: z
@@ -131,6 +132,7 @@ export function registerAnalyzerDefinitionTools(
         .default(10)
         .describe("Cache duration in minutes for identical jobs (default: 10)"),
     },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     async ({ definitionId, configuration, rate, rateUnit, jobCache }) => {
       try {
         const analyzer = await client.enableAnalyzer({
@@ -145,7 +147,7 @@ export function registerAnalyzerDefinitionTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   id: analyzer.id,
                   name: analyzer.name,
@@ -153,8 +155,6 @@ export function registerAnalyzerDefinitionTools(
                   dataTypes: analyzer.dataTypeList,
                   message: `Analyzer "${analyzer.name}" enabled successfully. It can now analyze: ${analyzer.dataTypeList.join(", ")}`,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -164,7 +164,7 @@ export function registerAnalyzerDefinitionTools(
           content: [
             {
               type: "text" as const,
-              text: `Error enabling analyzer: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error enabling analyzer: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -178,7 +178,7 @@ export function registerAnalyzerDefinitionTools(
     "Disable (remove) an enabled analyzer from the current organization. DESTRUCTIVE: requires confirm=true.",
     {
       analyzerId: z
-        .string()
+        .string().max(65_536)
         .describe("The enabled analyzer's ID (the internal ID from cortex_list_analyzers, not the definition ID)"),
       confirm: z
         .boolean()
@@ -187,6 +187,7 @@ export function registerAnalyzerDefinitionTools(
           "Must be set to true to actually disable/remove the analyzer. Defaults to false as a safety guard.",
         ),
     },
+    { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
     async ({ analyzerId, confirm }) => {
       try {
         if (!confirm) {
@@ -194,7 +195,7 @@ export function registerAnalyzerDefinitionTools(
             content: [
               {
                 type: "text" as const,
-                text: `Analyzer NOT disabled. Re-call with confirm=true to disable/remove analyzer "${analyzerId}".`,
+                text: formatCortexData(`Analyzer NOT disabled. Re-call with confirm=true to disable/remove analyzer "${analyzerId}".`),
               },
             ],
             isError: true,
@@ -205,7 +206,7 @@ export function registerAnalyzerDefinitionTools(
           content: [
             {
               type: "text" as const,
-              text: `Analyzer "${analyzerId}" has been disabled and removed from the organization.`,
+              text: formatCortexData(`Analyzer "${analyzerId}" has been disabled and removed from the organization.`),
             },
           ],
         };
@@ -214,7 +215,7 @@ export function registerAnalyzerDefinitionTools(
           content: [
             {
               type: "text" as const,
-              text: `Error disabling analyzer: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error disabling analyzer: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,

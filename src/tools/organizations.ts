@@ -1,3 +1,4 @@
+import { formatCortexData } from "../safety.js";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CortexClient } from "../client.js";
@@ -10,6 +11,7 @@ export function registerOrganizationTools(
     "cortex_list_organizations",
     "List all organizations (requires superadmin API key via CORTEX_SUPERADMIN_KEY)",
     {},
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async () => {
       try {
         if (!client.superadminAvailable) {
@@ -39,7 +41,7 @@ export function registerOrganizationTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(summary, null, 2),
+              text: formatCortexData(summary),
             },
           ],
         };
@@ -48,7 +50,7 @@ export function registerOrganizationTools(
           content: [
             {
               type: "text" as const,
-              text: `Error listing organizations: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error listing organizations: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -61,8 +63,9 @@ export function registerOrganizationTools(
     "cortex_get_organization",
     "Get details about a specific organization (requires superadmin API key)",
     {
-      orgId: z.string().describe("The organization ID or name"),
+      orgId: z.string().max(65_536).describe("The organization ID or name"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async ({ orgId }) => {
       try {
         if (!client.superadminAvailable) {
@@ -82,7 +85,7 @@ export function registerOrganizationTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(org, null, 2),
+              text: formatCortexData(org),
             },
           ],
         };
@@ -91,7 +94,7 @@ export function registerOrganizationTools(
           content: [
             {
               type: "text" as const,
-              text: `Error getting organization: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error getting organization: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -105,10 +108,11 @@ export function registerOrganizationTools(
     "Create a new organization in Cortex (requires superadmin API key)",
     {
       name: z
-        .string()
+        .string().max(65_536)
         .describe("Organization name (used as ID, no spaces recommended)"),
-      description: z.string().describe("Organization description"),
+      description: z.string().max(65_536).describe("Organization description"),
     },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     async ({ name, description }) => {
       try {
         if (!client.superadminAvailable) {
@@ -128,7 +132,7 @@ export function registerOrganizationTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   id: org.id,
                   name: org.name,
@@ -136,8 +140,6 @@ export function registerOrganizationTools(
                   status: org.status,
                   message: `Organization "${org.name}" created successfully.`,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -147,7 +149,7 @@ export function registerOrganizationTools(
           content: [
             {
               type: "text" as const,
-              text: `Error creating organization: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error creating organization: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,
@@ -160,17 +162,19 @@ export function registerOrganizationTools(
     "cortex_update_organization",
     "Update an organization's description or status (requires superadmin API key)",
     {
-      orgId: z.string().describe("The organization ID or name"),
+      orgId: z.string().max(65_536).describe("The organization ID or name"),
       description: z
-        .string()
+        .string().max(65_536)
         .optional()
         .describe("New description for the organization"),
+      confirm: z.boolean().default(false).describe("Explicit confirmation required when locking an organization"),
       status: z
         .enum(["Active", "Locked"])
         .optional()
         .describe('New status: "Active" or "Locked"'),
     },
-    async ({ orgId, description, status }) => {
+    { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
+    async ({ orgId, description, status, confirm }) => {
       try {
         if (!client.superadminAvailable) {
           return {
@@ -183,6 +187,8 @@ export function registerOrganizationTools(
             isError: true,
           };
         }
+
+        if (status === "Locked" && !confirm) throw new Error("Organization locking requires confirm=true");
 
         const updates: Record<string, string> = {};
         if (description !== undefined) updates.description = description;
@@ -205,7 +211,7 @@ export function registerOrganizationTools(
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify(
+              text: formatCortexData(
                 {
                   id: org.id,
                   name: org.name,
@@ -213,8 +219,6 @@ export function registerOrganizationTools(
                   status: org.status,
                   message: `Organization "${org.name}" updated successfully.`,
                 },
-                null,
-                2,
               ),
             },
           ],
@@ -224,7 +228,7 @@ export function registerOrganizationTools(
           content: [
             {
               type: "text" as const,
-              text: `Error updating organization: ${error instanceof Error ? error.message : String(error)}`,
+              text: formatCortexData(`Error updating organization: ${error instanceof Error ? error.message : String(error)}`),
             },
           ],
           isError: true,

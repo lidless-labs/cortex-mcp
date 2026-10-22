@@ -24,7 +24,7 @@ describe("startup configuration", () => {
     vi.stubEnv("CORTEX_URL", value);
     expect(getConfig().url).toBe(value.replace(/\/+$/, ""));
   });
-  it.each(["example.com", "/example", "http://", "ftp://cortex.example.com", "https://example:example@cortex.example.com", "https://example@cortex.example.com"])("rejects invalid base URL %s", value => {
+  it.each(["example.com", "/example", "http://", "ftp://cortex.example.com", "https://example:example@cortex.example.com", "https://example@cortex.example.com", "https://cortex.example.com?tenant=example", "https://cortex.example.com/#proxy", "https://cortex.example.com/?", "https://cortex.example.com/#"])("rejects invalid base URL %s", value => {
     vi.stubEnv("CORTEX_URL", value);
     expect(() => getConfig()).toThrow("CORTEX_URL must be an absolute HTTP or HTTPS URL without embedded credentials");
   });
