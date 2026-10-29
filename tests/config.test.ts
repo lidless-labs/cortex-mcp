@@ -92,7 +92,7 @@ describe("API transport security", () => {
   });
 
   it.each([false, true])("never accepts userinfo even with override %s and never leaks it", allowInsecureRemoteHttp => {
-    const url = "http://user:example-secret@127.0.0.1/";
+    const url = "http://user:example-secret@cortex.example.com/";
     vi.stubEnv("CORTEX_URL", url);
     vi.stubEnv("CORTEX_ALLOW_INSECURE_REMOTE_HTTP", String(allowInsecureRemoteHttp));
     for (const run of [() => getConfig(), () => new CortexClient({ ...getConfigForTest(), url, allowInsecureRemoteHttp })]) {
