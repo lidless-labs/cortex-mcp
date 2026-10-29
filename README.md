@@ -493,6 +493,10 @@ cortex-mcp/
 
 Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution path and [SECURITY.md](SECURITY.md) for reporting vulnerabilities. By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
+### Container root access
+
+The installer creates no guest root password and locks password login after starting the container. Manage the guest from its Proxmox host with `pct enter`. Service API credentials continue to use protected stdin delivery and root-only storage.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
