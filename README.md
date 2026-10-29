@@ -306,6 +306,8 @@ stores them with owner-only permissions for systemd `LoadCredential`. The server
 reads `cortex-api-key` and `cortex-url` from `CREDENTIALS_DIRECTORY` when their
 respective environment variables are absent. Environment configuration still works.
 
+The installed service runs as the dedicated `cortex-mcp` system account with no login shell. Application files under `/opt/cortex-mcp` remain root-owned and read-only to that account. Source credentials under `/etc/cortex-mcp` remain root-only. Systemd supplies private credential copies and owns the service's writable state and runtime directories (`/var/lib/cortex-mcp` and `/run/cortex-mcp`, mode `0700`). The unit uses a read-only filesystem sandbox, a private temporary directory, no capabilities and `NoNewPrivileges`. Keep private CA certificates readable by the account when configuring `NODE_EXTRA_CA_CERTS` in a unit override.
+
 For embedded use, pass an operator-approved `CredentialStore` adapter as the second
 `CortexClient` constructor argument. Its `put(userId, key)` method must persist the
 key without logging it and return a non-secret reference. Rotation returns only

@@ -99,6 +99,10 @@ printf '%s' "$CORTEX_API_KEY_VAL" | pct exec "$CTID" -- bash /opt/cortex-mcp/scr
 unset CORTEX_API_KEY_VAL
 pct exec "$CTID" -- bash -c "cd /opt/cortex-mcp && npm ci && npm run build"
 
+# Keep the service identity separate from root-owned code and source credentials.
+pct exec "$CTID" -- bash -c "getent passwd cortex-mcp >/dev/null || useradd --system --user-group --home-dir /var/lib/cortex-mcp --shell /usr/sbin/nologin cortex-mcp"
+pct exec "$CTID" -- bash -c "chown -R root:root /opt/cortex-mcp && chmod -R u=rwX,go=rX /opt/cortex-mcp"
+
 # Systemd service
 pct exec "$CTID" -- tee /etc/systemd/system/cortex-mcp.service >/dev/null <<'SVCEOF'
 [Unit]
@@ -107,6 +111,8 @@ After=network.target
 
 [Service]
 Type=simple
+User=cortex-mcp
+Group=cortex-mcp
 WorkingDirectory=/opt/cortex-mcp
 ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
@@ -114,6 +120,18 @@ RestartSec=10
 LoadCredential=cortex-api-key:/etc/cortex-mcp/cortex-api-key
 LoadCredential=cortex-url:/etc/cortex-mcp/cortex-url
 Environment=CORTEX_MODE=read-only
+StateDirectory=cortex-mcp
+StateDirectoryMode=0700
+RuntimeDirectory=cortex-mcp
+RuntimeDirectoryMode=0700
+Environment=HOME=/var/lib/cortex-mcp
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
 
 [Install]
 WantedBy=multi-user.target
