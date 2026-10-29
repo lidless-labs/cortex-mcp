@@ -393,9 +393,32 @@ detected" and observables "185.220.101.42, evil.example.com, 44d88612fea8a8f36de
 
 ### Proxmox LXC
 
-```bash
-bash -c "$(wget -qLO - https://raw.githubusercontent.com/lidless-labs/cortex-mcp/main/scripts/proxmox_install.sh)"
-```
+Before running the installer, review a local copy of the script and set these
+immutable inputs. There are no defaults:
+
+- `CORTEX_SOURCE_COMMIT`: the full 40-character hexadecimal commit reviewed for
+  installation from `https://github.com/lidless-labs/cortex-mcp.git`.
+- `NODE_VERSION`: an exact Node 22 version at least `22.12.0`, without a `v` prefix.
+- `NODE_ARCH`: `x64` or `arm64`, matching the guest architecture.
+- `NODE_SHA256`: the 64-character SHA-256 of that version's
+  `node-v<VERSION>-linux-<ARCH>.tar.xz` archive.
+
+Obtain the archive checksum from the official release's signed
+`SHASUMS256.txt.asc`. Verify its signature with a separately trusted Node release
+keyring using the [official binary verification instructions](https://github.com/nodejs/node#verifying-binaries)
+before supplying the checksum. Do not copy a checksum from the same unverified
+download as the archive.
+
+The installer rejects missing or malformed pins before any host command or LXC
+creation. It downloads only from `https://nodejs.org/dist/v<VERSION>/`, checks the
+archive against the supplied checksum before extraction, then fetches the reviewed
+source commit from the canonical repository and checks its exact hash before
+`npm ci --ignore-scripts` or the build. Node is installed in `/usr/local`, including
+the service executable `/usr/local/bin/node`. Ubuntu template and apt prerequisites
+still follow their upstream repositories. This does not freeze the whole OS or
+provide a reproducible apt snapshot. An interrupted install leaves its guest for
+operator inspection. A retry refuses an existing container ID.
+
 
 ### Release publishing
 

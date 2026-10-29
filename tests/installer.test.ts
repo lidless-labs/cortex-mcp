@@ -37,8 +37,8 @@ it("generates an unprivileged service with immutable application files and isola
   // temporary root. Only package/network/identity operations are stubbed.
   const harness = `
 set -euo pipefail
-git() { test "$1" = clone; }
-npm() { test "$1" = ci || test "$1" = run; }
+git() { if [[ "$1" == rev-parse ]]; then printf '%s\\n' "$CORTEX_SOURCE_COMMIT"; fi; }
+npm() { test "$1" = ci || test "$1" = run || test "$1" = prune; }
 getent() { return 2; }
 useradd() { printf 'useradd %s\\n' "$*" >> "$TEST_ROOT/identity.log"; }
 chown() { printf 'chown %s\\n' "$*" >> "$TEST_ROOT/identity.log"; }
@@ -60,6 +60,8 @@ pct() {
 }
 CTID=123
 YELLOW= NC=
+CORTEX_SOURCE_COMMIT=a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1
+export CORTEX_SOURCE_COMMIT
 CORTEX_URL_VAL=https://cortex.example.com
 CORTEX_API_KEY_VAL=example-installer-key
 ${setup}`;
