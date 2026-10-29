@@ -48,7 +48,7 @@ describe("observable targets", () => {
     await expect(submit(new CortexClient(config), value, "ip")).resolves.toMatchObject({ id: "example" });
     expect(fetch).toHaveBeenCalledOnce();
   });
-  it.each(["10.0.0.0/8", "fc00::/7", "8.8.8.0/33", "2001:4860::/129", "8.8.8.0/", "example.com/24"])("rejects an unsafe or malformed CIDR observable %s", async value => {
+  it.each(["10.0.0.0/8", "fc00::/7", "8.8.8.0/33", "2001:4860::/129", "8.8.8.0/", "example.com/24"])("rejects an unsafe or malformed CIDR observable %s", async value => { // content-guard: allow private-ipv4 (negative test of a public reserved CIDR)
     const fetch = vi.spyOn(globalThis, "fetch");
     await expect(submit(new CortexClient(config), value, "ip")).rejects.toThrow();
     expect(fetch).not.toHaveBeenCalled();

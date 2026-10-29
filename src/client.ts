@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { MAX_REQUEST_BYTES, MAX_FILE_BYTES, readResponse, parseResponse, httpError } from "./safety.js";
 import { validateObservableTarget } from "./targets.js";
 import { Agent } from "undici";
-import type { CortexConfig } from "./config.js";
+import { validateCortexUrl, type CortexConfig } from "./config.js";
 import type {
   Analyzer,
   AnalyzerDefinition,
@@ -61,6 +61,9 @@ export class CortexClient {
   private waitReportAgent?: Agent;
 
   constructor(private config: CortexConfig, private credentialStore?: CredentialStore) {
+    if (validateCortexUrl(config.url, config.allowInsecureRemoteHttp)) {
+      console.error("Warning: CORTEX_ALLOW_INSECURE_REMOTE_HTTP is enabled. Cortex API credentials and data will be sent unencrypted.");
+    }
     this.baseUrl = `${config.url}/api`;
     this.timeout = config.timeout;
     if (!config.verifySsl) {

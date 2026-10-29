@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getConfig } from "../src/config.js";
+import { CortexClient } from "../src/client.js";
 
 beforeEach(() => {
   vi.stubEnv("CORTEX_URL", "https://cortex.example.com/");
   vi.stubEnv("CORTEX_API_KEY", "example-key");
-  for (const name of ["CORTEX_TIMEOUT", "CORTEX_VERIFY_SSL", "CORTEX_MAX_FANOUT", "CORTEX_SUPERADMIN_KEY", "CORTEX_FILE_BASE_DIR", "CORTEX_ALLOW_DESTRUCTIVE"]) vi.stubEnv(name, undefined);
+  for (const name of ["CORTEX_TIMEOUT", "CORTEX_VERIFY_SSL", "CORTEX_MAX_FANOUT", "CORTEX_SUPERADMIN_KEY", "CORTEX_FILE_BASE_DIR", "CORTEX_ALLOW_DESTRUCTIVE", "CORTEX_ALLOW_INSECURE_REMOTE_HTTP"]) vi.stubEnv(name, undefined);
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -20,7 +21,7 @@ describe("startup configuration", () => {
     vi.stubEnv("CORTEX_TIMEOUT", value);
     expect(() => getConfig()).toThrow(/^CORTEX_TIMEOUT must be a positive integer between 1 and 300 seconds$/);
   });
-  it.each(["http://cortex.example.com:9001", "https://cortex.example.com/base/"])("accepts absolute HTTP URL %s", value => {
+  it.each(["https://cortex.example.com:9001", "https://cortex.example.com/base/"])("accepts absolute HTTPS URL %s", value => {
     vi.stubEnv("CORTEX_URL", value);
     expect(getConfig().url).toBe(value.replace(/\/+$/, ""));
   });
@@ -49,6 +50,65 @@ describe("startup configuration", () => {
     expect(() => getConfig()).toThrow(`${name} environment variable is required`);
   });
 });
+
+describe("API transport security", () => {
+  it.each([
+    "http://cortex.example.com:9001", "http://192.0.2.1", "http://localhost",
+    "http://cortex.localhost", "http://localhost.example.com", "http://127.0.0.1.example.com",
+    "http://[::ffff:127.0.0.1]", "http://[::ffff:192.0.2.1]", "http://[::2]",
+    "http://2130706433", "http://0x7f000001", "http://127.1", "http://%31%32%37.0.0.1",
+  ])("rejects nonliteral or remote HTTP before sending credentials: %s", url => {
+    vi.stubEnv("CORTEX_URL", url);
+    expect(() => getConfig()).toThrow(/HTTPS/);
+    expect(() => new CortexClient({ ...getConfigForTest(), url })).toThrow(/HTTPS/);
+  });
+
+  it.each(["http://127.0.0.1:9001", "http://127.42.0.3/base", "http://[::1]:9001", "http://[0:0:0:0:0:0:0:1]"])("allows literal loopback without an override: %s", url => {
+    vi.stubEnv("CORTEX_URL", url);
+    expect(getConfig().url).toBe(url);
+    expect(() => new CortexClient(getConfig())).not.toThrow();
+  });
+
+  it("requires an explicit override and warns without exposing credentials or URL", () => {
+    const warning = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      vi.stubEnv("CORTEX_URL", "http://cortex.example.com/private-path");
+      vi.stubEnv("CORTEX_ALLOW_INSECURE_REMOTE_HTTP", "true");
+      const config = getConfig();
+      expect(config).toMatchObject({ allowInsecureRemoteHttp: true });
+      expect(() => new CortexClient(config)).not.toThrow();
+      expect(warning).toHaveBeenCalled();
+      const text = warning.mock.calls.flat().join(" ");
+      expect(text).toMatch(/unencrypted/i);
+      expect(text).not.toContain("example-key");
+      expect(text).not.toContain("cortex.example.com");
+      expect(text).not.toContain("private-path");
+    } finally { warning.mockRestore(); }
+  });
+
+  it.each(["1", "yes", "TRUE", ""])("rejects ambiguous insecure HTTP override %j", value => {
+    vi.stubEnv("CORTEX_ALLOW_INSECURE_REMOTE_HTTP", value);
+    expect(() => getConfig()).toThrow(/CORTEX_ALLOW_INSECURE_REMOTE_HTTP/);
+  });
+
+  it.each([false, true])("never accepts userinfo even with override %s and never leaks it", allowInsecureRemoteHttp => {
+    const url = "http://user:example-secret@cortex.example.com/";
+    vi.stubEnv("CORTEX_URL", url);
+    vi.stubEnv("CORTEX_ALLOW_INSECURE_REMOTE_HTTP", String(allowInsecureRemoteHttp));
+    for (const run of [() => getConfig(), () => new CortexClient({ ...getConfigForTest(), url, allowInsecureRemoteHttp })]) {
+      try { run(); throw new Error("expected rejection"); }
+      catch (error) {
+        expect(String(error)).toMatch(/without embedded credentials/);
+        expect(String(error)).not.toContain("example-secret");
+        expect(String(error)).not.toContain(url);
+      }
+    }
+  });
+});
+
+function getConfigForTest() {
+  return { url: "https://cortex.example.com", apiKey: "example-key", verifySsl: true, timeout: 1000, allowDestructive: false, maxFanout: 10 };
+}
 
 it("uses the trimmed base URL that passed validation", () => {
   vi.stubEnv("CORTEX_URL", " https://cortex.example.com/ ");

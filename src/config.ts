@@ -8,6 +8,8 @@ export interface CortexConfig {
   apiKey: string;
   superadminKey?: string;
   verifySsl: boolean;
+  /** Explicitly allow sending credentials to a remote API over plaintext HTTP. */
+  allowInsecureRemoteHttp?: boolean;
   timeout: number;
   /**
    * Absolute base directory that `cortex_run_analyzer_file` is confined to when
@@ -25,6 +27,32 @@ export interface CortexConfig {
    * single call. Defaults to 10.
    */
   maxFanout: number;
+}
+
+/** Validate before any authenticated request, including clients built without getConfig. */
+export function validateCortexUrl(url: string, allowInsecureRemoteHttp = false): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password || /[?#\\\s]/.test(url)) {
+      throw new Error("Invalid URL");
+    }
+  } catch {
+    throw new Error("CORTEX_URL must be an absolute HTTP or HTTPS URL without embedded credentials, query string or fragment");
+  }
+  if (parsed.protocol === "https:") return false;
+
+  // Use literal addresses only. Do not trust DNS names, mapped IPv6 addresses,
+  // or WHATWG's legacy integer, abbreviated, octal and encoded IPv4 forms.
+  const host = /^http:\/\/(\[[^\]]+\]|[^/:]+)(?::\d+)?(?:\/|$)/i.exec(url)?.[1];
+  const loopback = host !== undefined && (
+    (host === parsed.hostname && /^127(?:\.\d{1,3}){3}$/.test(host)) ||
+    (host.startsWith("[") && parsed.hostname === "[::1]")
+  );
+  if (!loopback && !allowInsecureRemoteHttp) {
+    throw new Error("CORTEX_URL requires HTTPS except for literal loopback addresses. Remote HTTP requires CORTEX_ALLOW_INSECURE_REMOTE_HTTP=true");
+  }
+  return !loopback;
 }
 
 function positiveInteger(name: string, fallback: number, maximum: number, message: string): number {
@@ -73,14 +101,12 @@ export function getConfig(): CortexConfig {
     throw new Error("CORTEX_ALLOW_PRIVATE_TARGETS must be true or false");
   }
 
-  try {
-    const parsed = new URL(url);
-    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password || /[?#]/.test(url)) {
-      throw new Error("Invalid URL");
-    }
-  } catch {
-    throw new Error("CORTEX_URL must be an absolute HTTP or HTTPS URL without embedded credentials, query string or fragment");
+  const insecureHttp = process.env.CORTEX_ALLOW_INSECURE_REMOTE_HTTP ?? "false";
+  if (insecureHttp !== "true" && insecureHttp !== "false") {
+    throw new Error("CORTEX_ALLOW_INSECURE_REMOTE_HTTP must be true or false");
   }
+  const allowInsecureRemoteHttp = insecureHttp === "true";
+  validateCortexUrl(url, allowInsecureRemoteHttp);
 
   const apiKey = credential("CORTEX_API_KEY", "cortex-api-key");
   if (!apiKey) {
@@ -118,6 +144,7 @@ export function getConfig(): CortexConfig {
     allowPrivateTargets: privateTargets === "true",
     superadminKey,
     verifySsl,
+    allowInsecureRemoteHttp,
     timeout,
     fileBaseDir,
     allowDestructive,

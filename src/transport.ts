@@ -22,12 +22,15 @@ export class BoundedStdioServerTransport extends StdioServerTransport {
           }
           if (end === -1) break;
           lineBytes = 0;
+          // The SDK caps each appended buffer before parsing its complete lines.
+          this.push(chunk.subarray(start, end + 1));
           start = end + 1;
         }
-        done(null, chunk);
+        done(null, chunk.subarray(start));
       },
     });
-    super(input, output);
+    // The application limit excludes the newline delimiter.
+    super(input, output, { maxBufferSize: MAX_MCP_MESSAGE_BYTES + 1 });
     this.input = input;
     input.once("error", () => { void this.close(); });
   }

@@ -13,6 +13,31 @@ echo -e "${BLUE}  Cortex MCP - Proxmox LXC Installer${NC}"
 echo -e "${BLUE}================================================${NC}"
 echo ""
 
+# Reviewed source
+# The operator supplies the exact reviewed commit. Branches and tags are rejected.
+if [[ ! "${CORTEX_SOURCE_COMMIT:-}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    printf '%s\n' 'Error: CORTEX_SOURCE_COMMIT must be a reviewed 40-character hexadecimal commit.' >&2
+    exit 1
+fi
+CORTEX_SOURCE_COMMIT=${CORTEX_SOURCE_COMMIT,,}
+
+# Reviewed Node artifact
+# Supply the SHA-256 from an independently verified official release manifest.
+# Node 22.12+ satisfies the runtime and the checked-in build tool requirements.
+if [[ ! "${NODE_VERSION:-}" =~ ^22\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$ ]] || (( BASH_REMATCH[1] < 12 )); then
+    printf '%s\n' 'Error: NODE_VERSION must be an exact Node 22 version, at least 22.12.0.' >&2
+    exit 1
+fi
+if [[ ! "${NODE_ARCH:-}" =~ ^(x64|arm64)$ ]]; then
+    printf '%s\n' 'Error: NODE_ARCH must be x64 or arm64 for the reviewed archive.' >&2
+    exit 1
+fi
+if [[ ! "${NODE_SHA256:-}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+    printf '%s\n' 'Error: NODE_SHA256 must be the reviewed 64-character hexadecimal archive checksum.' >&2
+    exit 1
+fi
+NODE_SHA256=${NODE_SHA256,,}
+
 # Pre-flight
 if [ ! -f /etc/pve/.version ]; then
     echo -e "${RED}Error: Must be run on a Proxmox VE host.${NC}"; exit 1
@@ -71,33 +96,71 @@ fi
 
 # Create container
 echo -e "${YELLOW}Creating container $CTID...${NC}"
-CT_PASSWORD=$(openssl rand -base64 12)
 pct create "$CTID" "$TEMPLATE" \
     --hostname "$CT_HOSTNAME" --memory "$CT_MEMORY" --cores "$CT_CORES" \
     --rootfs "$CT_STORAGE:$CT_DISK" --net0 "$NET_CONFIG" \
-    --unprivileged 1 --features nesting=1 --password "$CT_PASSWORD" --start 0
+    --unprivileged 1 --features nesting=1 --start 0
 
 # Start and wait for network
-unset CT_PASSWORD
-pct start "$CTID"; sleep 10
+pct start "$CTID"
+# Host administrators use pct enter. No guest root password is generated.
+pct exec "$CTID" -- passwd -l root
+sleep 10
 for i in {1..30}; do
     pct exec "$CTID" -- ping -c1 8.8.8.8 &>/dev/null && break; sleep 2
 done
 
 # Install deps
+# Ubuntu packages are authenticated by Ubuntu apt, but are not snapshot-pinned.
 echo -e "${YELLOW}Installing dependencies...${NC}"
-pct exec "$CTID" -- bash -c "apt-get update && apt-get install -y curl git ca-certificates gnupg"
-pct exec "$CTID" -- bash -c "mkdir -p /etc/apt/keyrings && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg"
-pct exec "$CTID" -- bash -c "echo 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main' > /etc/apt/sources.list.d/nodesource.list"
-pct exec "$CTID" -- bash -c "apt-get update && apt-get install -y nodejs"
+pct exec "$CTID" -- bash -c "apt-get update && apt-get install -y curl git ca-certificates xz-utils libatomic1"
+# Verify the exact official Node archive before extracting or executing its code.
+pct exec "$CTID" -- env NODE_VERSION="$NODE_VERSION" NODE_ARCH="$NODE_ARCH" NODE_SHA256="$NODE_SHA256" bash -ceu '
+case "$(dpkg --print-architecture)" in
+    amd64) actual_arch=x64 ;;
+    arm64) actual_arch=arm64 ;;
+    *) printf "%s\n" "Unsupported guest architecture." >&2; exit 1 ;;
+esac
+if [ "$actual_arch" != "$NODE_ARCH" ]; then
+    printf "%s\n" "NODE_ARCH does not match the guest architecture." >&2
+    exit 1
+fi
+download_dir=$(mktemp -d)
+trap "rm -f \"\$download_dir/node.tar.xz\"; rmdir \"\$download_dir\"" EXIT
+curl --fail --silent --show-error --location --proto "=https" --proto-redir "=https" --tlsv1.2 \
+    --output "$download_dir/node.tar.xz" "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-$NODE_ARCH.tar.xz"
+printf "%s  %s\n" "$NODE_SHA256" "$download_dir/node.tar.xz" | sha256sum --check --status
+tar -xJf "$download_dir/node.tar.xz" -C /usr/local --strip-components=1 --no-same-owner
+'
 
 # Clone, configure, build
+# Fetch reviewed source
 echo -e "${YELLOW}Setting up Cortex MCP...${NC}"
-pct exec "$CTID" -- bash -c "git clone https://github.com/lidless-labs/cortex-mcp.git /opt/cortex-mcp"
+pct exec "$CTID" -- env SOURCE_COMMIT="$CORTEX_SOURCE_COMMIT" bash -ceu '
+export PATH=/usr/local/bin:/usr/bin:/bin
+git init /opt/cortex-mcp
+cd /opt/cortex-mcp
+git remote add origin https://github.com/lidless-labs/cortex-mcp.git
+git fetch --depth 1 origin "$SOURCE_COMMIT"
+git checkout --detach FETCH_HEAD
+ACTUAL_COMMIT=$(git rev-parse --verify HEAD^{commit})
+if [ "$ACTUAL_COMMIT" != "$SOURCE_COMMIT" ]; then
+    printf "%s\n" "Source commit verification failed. Stopping before dependency installation." >&2
+    exit 1
+fi
+npm ci --ignore-scripts
+npm run build
+npm prune --omit=dev --ignore-scripts
+'
+
+# Configure service
 printf '%s' "$CORTEX_URL_VAL" | pct exec "$CTID" -- bash /opt/cortex-mcp/scripts/store-credential.sh /etc/cortex-mcp/cortex-url
 printf '%s' "$CORTEX_API_KEY_VAL" | pct exec "$CTID" -- bash /opt/cortex-mcp/scripts/store-credential.sh /etc/cortex-mcp/cortex-api-key
 unset CORTEX_API_KEY_VAL
-pct exec "$CTID" -- bash -c "cd /opt/cortex-mcp && npm ci && npm run build"
+
+# Keep the service identity separate from root-owned code and source credentials.
+pct exec "$CTID" -- bash -c "getent passwd cortex-mcp >/dev/null || useradd --system --user-group --home-dir /var/lib/cortex-mcp --shell /usr/sbin/nologin cortex-mcp"
+pct exec "$CTID" -- bash -c "chown -R root:root /opt/cortex-mcp && chmod -R u=rwX,go=rX /opt/cortex-mcp"
 
 # Systemd service
 pct exec "$CTID" -- tee /etc/systemd/system/cortex-mcp.service >/dev/null <<'SVCEOF'
@@ -107,13 +170,27 @@ After=network.target
 
 [Service]
 Type=simple
+User=cortex-mcp
+Group=cortex-mcp
 WorkingDirectory=/opt/cortex-mcp
-ExecStart=/usr/bin/node dist/index.js
+ExecStart=/usr/local/bin/node dist/index.js
 Restart=on-failure
 RestartSec=10
 LoadCredential=cortex-api-key:/etc/cortex-mcp/cortex-api-key
 LoadCredential=cortex-url:/etc/cortex-mcp/cortex-url
 Environment=CORTEX_MODE=read-only
+StateDirectory=cortex-mcp
+StateDirectoryMode=0700
+RuntimeDirectory=cortex-mcp
+RuntimeDirectoryMode=0700
+Environment=HOME=/var/lib/cortex-mcp
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
 
 [Install]
 WantedBy=multi-user.target
