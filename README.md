@@ -58,7 +58,7 @@ Add this to your MCP client config (this example is Claude Desktop's `claude_des
       "command": "npx",
       "args": ["-y", "thehive-cortex-mcp"],
       "env": {
-        "CORTEX_URL": "http://cortex.example.com:9001",
+        "CORTEX_URL": "https://cortex.example.com:9001",
         "CORTEX_API_KEY": "your-org-admin-key",
         "CORTEX_SUPERADMIN_KEY": "your-superadmin-key"
       }
@@ -75,7 +75,7 @@ The npm package is named [`thehive-cortex-mcp`](https://www.npmjs.com/package/th
 
 ```bash
 claude mcp add cortex \
-  --env CORTEX_URL=http://cortex.example.com:9001 \
+  --env CORTEX_URL=https://cortex.example.com:9001 \
   --env CORTEX_API_KEY=your-org-admin-key \
   --env CORTEX_SUPERADMIN_KEY=your-superadmin-key \
   -- npx -y thehive-cortex-mcp
@@ -90,7 +90,7 @@ openclaw mcp set cortex '{
   "command": "npx",
   "args": ["-y", "thehive-cortex-mcp"],
   "env": {
-    "CORTEX_URL": "http://cortex.example.com:9001",
+    "CORTEX_URL": "https://cortex.example.com:9001",
     "CORTEX_API_KEY": "your-org-admin-key",
     "CORTEX_SUPERADMIN_KEY": "your-superadmin-key"
   }
@@ -104,7 +104,7 @@ openclaw mcp set cortex '{
   "command": "node",
   "args": ["/absolute/path/to/cortex-mcp/dist/index.js"],
   "env": {
-    "CORTEX_URL": "http://cortex.example.com:9001",
+    "CORTEX_URL": "https://cortex.example.com:9001",
     "CORTEX_API_KEY": "your-org-admin-key",
     "CORTEX_SUPERADMIN_KEY": "your-superadmin-key"
   }
@@ -128,7 +128,7 @@ mcp_servers:
     command: "npx"
     args: ["-y", "thehive-cortex-mcp"]
     env:
-      CORTEX_URL: "http://cortex.example.com:9001"
+      CORTEX_URL: "https://cortex.example.com:9001"
       CORTEX_API_KEY: "your-org-admin-key"
       CORTEX_SUPERADMIN_KEY: "your-superadmin-key"
 ```
@@ -145,7 +145,7 @@ Then reload MCP from inside a Hermes session:
 
 ```bash
 codex mcp add cortex \
-  --env CORTEX_URL=http://cortex.example.com:9001 \
+  --env CORTEX_URL=https://cortex.example.com:9001 \
   --env CORTEX_API_KEY=your-org-admin-key \
   --env CORTEX_SUPERADMIN_KEY=your-superadmin-key \
   -- npx -y thehive-cortex-mcp
@@ -160,7 +160,7 @@ codex mcp list
 ### Standalone
 
 ```bash
-export CORTEX_URL=http://cortex.example.com:9001
+export CORTEX_URL=https://cortex.example.com:9001
 export CORTEX_API_KEY=your-org-admin-key
 npx -y thehive-cortex-mcp     # or `npm start` from a source checkout
 ```
@@ -264,11 +264,12 @@ npx -y thehive-cortex-mcp     # or `npm start` from a source checkout
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `CORTEX_URL` | Yes | - | Absolute HTTP or HTTPS base URL without embedded credentials, query string or fragment (e.g., `http://cortex.example.com:9001`) |
+| `CORTEX_URL` | Yes | - | HTTPS base URL without embedded credentials, query string or fragment (e.g., `https://cortex.example.com:9001`) |
 | `CORTEX_API_KEY` | Yes | - | API key for normal operations (org admin level) |
 | `CORTEX_SUPERADMIN_KEY` | No | - | Superadmin API key for org/user/definition management |
 | `CORTEX_MODE` | No | `read-only` | Accepts `read-only` or `write`. All state changes, including analyzer submissions and administration, require `write`. Read-only POST job searches remain available. |
 | `CORTEX_ALLOW_PRIVATE_TARGETS` | No | `false` | Accepts `true` or `false`. Explicit operator permission to submit private or special-purpose network targets. Public network targets are checked after DNS resolution. |
+| `CORTEX_ALLOW_INSECURE_REMOTE_HTTP` | No | `false` | Set to `true` only to accept sending API keys and data unencrypted to a remote HTTP API. Emits a warning on stderr. |
 | `CORTEX_VERIFY_SSL` | No | `true` | Accepts `true` or `false` (case-insensitive). Set to `false` to skip SSL verification. Applied via a scoped HTTP dispatcher for Cortex requests only; it does **not** disable TLS verification process-wide. |
 | `CORTEX_TIMEOUT` | No | `30` | Request timeout as a positive integer from 1 to 300 seconds. Wait-report calls (`cortex_wait_and_get_report`, and `cortex_analyze_observable` while it waits for reports) instead allow their requested `timeout` plus 10 seconds, if that is longer. |
 | `CORTEX_FILE_BASE_DIR` | No | - | Absolute base directory that `cortex_run_analyzer_file` may read files from. `filePath` is confined to this directory (realpath checked to defeat symlink/`..` escapes); paths outside it are refused. When unset, reading files by path is **disabled** and you must submit file content via `fileBase64`. |
@@ -284,6 +285,7 @@ This server can trigger real-world actions and submit observables to third-party
 - **Responders are gated.** `cortex_run_responder` requires both `CORTEX_ALLOW_DESTRUCTIVE=1` in the environment **and** `confirm=true` in the call.
 - **Changes require confirmation where indicated.** User creation with roles, key rotation, organization locking, responder removal, job deletion, analyzer removal and cleanup with `dryRun=false` require `confirm=true`. Deletion and responder execution also require `CORTEX_ALLOW_DESTRUCTIVE=1`.
 - **Bulk analysis is conservative.** `cortex_analyze_observable` does **not** fan out to every analyzer by default. Pass an explicit `analyzers` allowlist, or set `fanOut=true` to run all applicable analyzers (capped by `CORTEX_MAX_FANOUT`).
+- **API transport requires HTTPS.** HTTP is allowed without an override only for literal dotted-decimal addresses in `127.0.0.0/8` and IPv6 `::1` (including expanded notation). DNS names, including `localhost` and names ending in `.localhost`, IPv4-mapped IPv6, encoded addresses and legacy IPv4 forms require the explicit insecure HTTP override. No DNS lookup determines this exception. Prefer HTTPS with a trusted private CA through `NODE_EXTRA_CA_CERTS`. The override does not disable certificate verification or permit URL userinfo.
 - **SSL verification is scoped.** Disabling `CORTEX_VERIFY_SSL` relaxes TLS only for Cortex connections, never for the whole Node process.
 
 ### Result and input limits
@@ -423,7 +425,7 @@ npm run test:watch    # Watch mode
 npm run lint          # Type check
 
 # Integration tests (requires live Cortex instance)
-CORTEX_URL=http://cortex.example.com:9001 \
+CORTEX_URL=https://cortex.example.com:9001 \
 CORTEX_API_KEY=your-key \
 CORTEX_SUPERADMIN_KEY=your-superadmin-key \
 npx vitest run tests/integration.test.ts
