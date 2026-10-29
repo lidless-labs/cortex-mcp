@@ -3,6 +3,30 @@ import { describe, expect, it } from "vitest";
 import { BoundedStdioServerTransport, MAX_MCP_MESSAGE_BYTES } from "../src/transport.js";
 
 describe("bounded stdio transport", () => {
+  it.each([false, true])("accepts a message at the 16 MiB limit, fragmented=%s", async fragmented => {
+    const source = new PassThrough(); const output = new PassThrough();
+    const transport = new BoundedStdioServerTransport(source, output);
+    const messages: unknown[] = []; const errors: string[] = [];
+    transport.onmessage = message => messages.push(message);
+    transport.onerror = error => errors.push(error.message);
+    await transport.start();
+    const envelope = { jsonrpc: "2.0", id: 1, method: "ping", params: { example: "" } };
+    envelope.params.example = "x".repeat(16 * 1024 * 1024 - Buffer.byteLength(JSON.stringify(envelope)));
+    const encoded = Buffer.from(JSON.stringify(envelope) + "\n");
+    try {
+      if (fragmented) {
+        source.write(encoded.subarray(0, 8 * 1024 * 1024));
+        source.write(encoded.subarray(8 * 1024 * 1024));
+      } else {
+        source.write(encoded);
+      }
+      await new Promise(resolve => setImmediate(resolve));
+      expect(errors).toEqual([]);
+      expect(messages).toEqual([envelope]);
+    } finally {
+      await transport.close(); source.destroy(); output.destroy();
+    }
+  });
   it.each([false, true])("closes on fragmented oversized input, newline=%s", async newline => {
     const source = new PassThrough(); const output = new PassThrough();
     const transport = new BoundedStdioServerTransport(source, output);
