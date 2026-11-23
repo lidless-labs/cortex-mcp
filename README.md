@@ -56,7 +56,7 @@ Add this to your MCP client config (this example is Claude Desktop's `claude_des
   "mcpServers": {
     "cortex": {
       "command": "npx",
-      "args": ["-y", "thehive-cortex-mcp"],
+      "args": ["-y", "-p", "thehive-cortex-mcp", "cortex-mcp"],
       "env": {
         "CORTEX_URL": "https://cortex.example.com:9001",
         "CORTEX_API_KEY": "your-org-admin-key",
@@ -67,7 +67,7 @@ Add this to your MCP client config (this example is Claude Desktop's `claude_des
 }
 ```
 
-The npm package is named [`thehive-cortex-mcp`](https://www.npmjs.com/package/thehive-cortex-mcp); it installs a `cortex-mcp` binary. Set `CORTEX_SUPERADMIN_KEY` only if you want the organization and user management tools.
+The [`thehive-cortex-mcp`](https://www.npmjs.com/package/thehive-cortex-mcp) package provides the `cortex-mcp` command. The examples name that command explicitly because the package exposes multiple commands. Set `CORTEX_SUPERADMIN_KEY` if you need organization and user management tools.
 
 ## Usage
 
@@ -78,7 +78,7 @@ claude mcp add cortex \
   --env CORTEX_URL=https://cortex.example.com:9001 \
   --env CORTEX_API_KEY=your-org-admin-key \
   --env CORTEX_SUPERADMIN_KEY=your-superadmin-key \
-  -- npx -y thehive-cortex-mcp
+  -- npx -y -p thehive-cortex-mcp cortex-mcp
 ```
 
 Add `--scope user` to make it available from any directory instead of only the current project.
@@ -88,7 +88,7 @@ Add `--scope user` to make it available from any directory instead of only the c
 ```bash
 openclaw mcp set cortex '{
   "command": "npx",
-  "args": ["-y", "thehive-cortex-mcp"],
+  "args": ["-y", "-p", "thehive-cortex-mcp", "cortex-mcp"],
   "env": {
     "CORTEX_URL": "https://cortex.example.com:9001",
     "CORTEX_API_KEY": "your-org-admin-key",
@@ -126,7 +126,7 @@ openclaw mcp list   # confirm "cortex" is registered
 mcp_servers:
   cortex:
     command: "npx"
-    args: ["-y", "thehive-cortex-mcp"]
+    args: ["-y", "-p", "thehive-cortex-mcp", "cortex-mcp"]
     env:
       CORTEX_URL: "https://cortex.example.com:9001"
       CORTEX_API_KEY: "your-org-admin-key"
@@ -148,7 +148,7 @@ codex mcp add cortex \
   --env CORTEX_URL=https://cortex.example.com:9001 \
   --env CORTEX_API_KEY=your-org-admin-key \
   --env CORTEX_SUPERADMIN_KEY=your-superadmin-key \
-  -- npx -y thehive-cortex-mcp
+  -- npx -y -p thehive-cortex-mcp cortex-mcp
 ```
 
 Codex writes the entry to `~/.codex/config.toml` under `[mcp_servers.cortex]`. Verify with:
@@ -162,7 +162,7 @@ codex mcp list
 ```bash
 export CORTEX_URL=https://cortex.example.com:9001
 export CORTEX_API_KEY=your-org-admin-key
-npx -y thehive-cortex-mcp     # or `npm start` from a source checkout
+npx -y -p thehive-cortex-mcp cortex-mcp     # or `npm start` from a source checkout
 ```
 
 ## MCP Tools (30)

@@ -16,11 +16,11 @@ function detectDataType(value: string): string | null {
   // IPv6 (simplified check)
   if (/^[0-9a-fA-F:]{2,39}(\/\d{1,3})?$/.test(trimmed) && trimmed.includes(":")) return "ip";
 
-  // Email
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return "mail";
-
   // URL
   if (/^https?:\/\//i.test(trimmed)) return "url";
+
+  // Email
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return "mail";
 
   // MD5
   if (/^[a-fA-F0-9]{32}$/.test(trimmed)) return "hash";
@@ -239,16 +239,20 @@ export function registerBulkTools(
         );
 
         // Step 4: Aggregate results
+        let analyzersFailed = failed.length;
         const allTaxonomies: Array<Taxonomy & { analyzer: string }> = [];
         const results: Array<{
           analyzer: string;
-          status: string;
+          status: JobReport["status"] | "Error";
           taxonomies: string[];
         }> = [];
 
         reports.forEach((result, i) => {
           if (result.status === "fulfilled") {
             const { analyzer, report } = result.value;
+            if (report.status === "Failure" || report.status === "Deleted") {
+              analyzersFailed++;
+            }
             const taxonomies = report.report?.summary?.taxonomies ?? [];
             taxonomies.forEach((t) =>
               allTaxonomies.push({ ...t, analyzer }),
@@ -262,6 +266,7 @@ export function registerBulkTools(
               ),
             });
           } else {
+            analyzersFailed++;
             results.push({
               analyzer: submitted[i]?.analyzer ?? "unknown",
               status: "Error",
@@ -281,8 +286,7 @@ export function registerBulkTools(
         };
 
         return {
-          isError: (submitted.length === 0 && failed.length > 0) ||
-            (reports.length > 0 && reports.every(result => result.status === "rejected")),
+          isError: analyzersFailed === selected.length,
           content: [
             {
               type: "text" as const,
@@ -290,7 +294,7 @@ export function registerBulkTools(
                 {
                   observable: { dataType, data, autoDetected },
                   analyzersRun: submitted.length,
-                  analyzersFailed: failed.length,
+                  analyzersFailed,
                   analyzersSkippedByCap: capped
                     ? applicable.length - selected.length
                     : 0,

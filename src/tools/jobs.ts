@@ -359,7 +359,7 @@ export function registerJobTools(
         if (olderThanDays) {
           const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
           matchingJobs = matchingJobs.filter(
-            (j) => (j.createdAt ?? 0) < cutoff,
+            (j) => typeof j.createdAt === "number" && Number.isFinite(j.createdAt) && j.createdAt < cutoff,
           );
         }
 

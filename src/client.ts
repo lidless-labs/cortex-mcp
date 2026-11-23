@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { MAX_REQUEST_BYTES, MAX_FILE_BYTES, readResponse, parseResponse, httpError } from "./safety.js";
 import { validateObservableTarget } from "./targets.js";
-import { Agent } from "undici";
+import { Agent, fetch as undiciFetch, FormData as UndiciFormData, type Response as UndiciResponse } from "undici";
 import { validateCortexUrl, type CortexConfig } from "./config.js";
 import type {
   Analyzer,
@@ -27,6 +27,11 @@ import type {
  */
 const WAIT_REPORT_MARGIN_MS = 10_000;
 
+// The bounded reader only uses the body stream, which both fetch implementations provide.
+const readFetchResponse = readResponse as (
+  response: Pick<Response | UndiciResponse, "body">,
+) => Promise<string>;
+
 /** Per-request overrides for the shared request path. */
 interface RequestOverrides {
   /** Abort timer for this request in ms. Defaults to the configured timeout. */
@@ -34,6 +39,12 @@ interface RequestOverrides {
   /** undici dispatcher for this request. Defaults to the scoped dispatcher. */
   dispatcher?: Agent;
   readOnlySearch?: boolean;
+}
+
+interface JsonRequestOptions {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
 }
 
 export interface CredentialStore {
@@ -73,13 +84,14 @@ export class CortexClient {
     }
   }
 
-  /**
-   * Extra fetch init carrying the scoped dispatcher (when present). undici's
-   * `dispatcher` is not in the lib.dom RequestInit type, so it is attached via
-   * a loosely-typed object.
-   */
-  private get fetchInit(): Record<string, unknown> {
-    return this.dispatcher ? { dispatcher: this.dispatcher } : {};
+  private fetchRequest(
+    url: string,
+    options: JsonRequestOptions & { signal: AbortSignal },
+    dispatcher = this.dispatcher,
+  ) {
+    const init = { ...options, redirect: "error" as const };
+    // A scoped Agent must use the same Undici version as the fetch dispatcher.
+    return dispatcher ? undiciFetch(url, { ...init, dispatcher }) : fetch(url, init);
   }
 
   private get waitReportDispatcher(): Agent {
@@ -118,7 +130,7 @@ export class CortexClient {
 
   private async request<T>(
     path: string,
-    options: RequestInit = {},
+    options: JsonRequestOptions = {},
     useSuperadmin = false,
     overrides: RequestOverrides = {},
   ): Promise<T> {
@@ -128,7 +140,6 @@ export class CortexClient {
     }
     const url = `${this.baseUrl}${path}`;
     const timeoutMs = overrides.timeoutMs ?? this.timeout;
-    const dispatcher = overrides.dispatcher ?? this.dispatcher;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     const authKey = useSuperadmin
@@ -145,13 +156,11 @@ export class CortexClient {
     }
 
     try {
-      const response = await fetch(url, {
+      const response = await this.fetchRequest(url, {
         ...options,
-        redirect: "error",
-        ...(dispatcher ? { dispatcher } : {}),
-        headers: { ...headers, ...(options.headers as Record<string, string>) },
+        headers: { ...headers, ...options.headers },
         signal: controller.signal,
-      });
+      }, overrides.dispatcher);
 
       if (!response.ok) {
         await response.body?.cancel();
@@ -159,7 +168,7 @@ export class CortexClient {
       }
 
       // Some DELETE endpoints return empty body
-      const text = await readResponse(response);
+      const text = await readFetchResponse(response);
       if (!text) return undefined as T;
       return parseResponse<T>(text);
     } catch (error) {
@@ -175,7 +184,7 @@ export class CortexClient {
   // Raw text request for endpoints that return plain text (e.g. key renewal)
   private async requestText(
     path: string,
-    options: RequestInit = {},
+    options: JsonRequestOptions = {},
     useSuperadmin = false,
   ): Promise<string> {
     this.assertRequestAllowed(options.method ?? "GET", path);
@@ -194,11 +203,9 @@ export class CortexClient {
     }
 
     try {
-      const response = await fetch(url, {
+      const response = await this.fetchRequest(url, {
         ...options,
-        redirect: "error",
-        ...this.fetchInit,
-        headers: { ...headers, ...(options.headers as Record<string, string>) },
+        headers: { ...headers, ...options.headers },
         signal: controller.signal,
       });
 
@@ -207,7 +214,7 @@ export class CortexClient {
         throw httpError(response.status);
       }
 
-      return await readResponse(response);
+      return await readFetchResponse(response);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error(`Cortex API timeout after ${this.timeout}ms`);
@@ -276,8 +283,6 @@ export class CortexClient {
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      const formData = new FormData();
-
       // Cortex expects _json field with metadata and attachment field with file
       const jsonData = JSON.stringify({
         dataType: "file",
@@ -285,29 +290,36 @@ export class CortexClient {
         pap: options.pap,
         message: options.message ?? "",
       });
-      formData.append("_json", new Blob([jsonData], { type: "application/json" }));
-
       const fileBuffer = Uint8Array.from(file.content).buffer;
       const fileBlob = new Blob([fileBuffer], { type: file.contentType });
-      formData.append("attachment", fileBlob, file.filename);
+      const withParts = <T extends FormData | UndiciFormData>(formData: T): T => {
+        formData.append("_json", new Blob([jsonData], { type: "application/json" }));
+        formData.append("attachment", fileBlob, file.filename);
+        return formData;
+      };
 
-      const response = await fetch(url, {
+      const init = {
         method: "POST",
-        redirect: "error",
-        ...this.fetchInit,
+        redirect: "error" as const,
         headers: {
           Authorization: `Bearer ${this.config.apiKey}`,
         },
-        body: formData,
         signal: controller.signal,
-      });
+      };
+      const response = this.dispatcher
+        ? await undiciFetch(url, {
+          ...init,
+          dispatcher: this.dispatcher,
+          body: withParts(new UndiciFormData()),
+        })
+        : await fetch(url, { ...init, body: withParts(new FormData()) });
 
       if (!response.ok) {
         await response.body?.cancel();
         throw httpError(response.status);
       }
 
-      return parseResponse<Job>(await readResponse(response));
+      return parseResponse<Job>(await readFetchResponse(response));
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error(`Cortex API timeout after ${this.timeout}ms`);

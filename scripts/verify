@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd -- "$(dirname -- "$0")/.."
+npm run typecheck
+CORTEX_URL='' CORTEX_API_KEY='' CORTEX_SUPERADMIN_KEY='' npm test
+npm run build
