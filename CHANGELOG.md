@@ -76,5 +76,5 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and scoped SSL verification.
 
 [Unreleased]: https://github.com/lidless-labs/cortex-mcp/compare/v1.3.4...HEAD
-[1.3.4]: https://github.com/lidless-labs/cortex-mcp/compare/v1.2.0...v1.3.4
+[1.3.4]: https://github.com/lidless-labs/cortex-mcp/compare/v1.3.3...v1.3.4
 [1.2.0]: https://github.com/lidless-labs/cortex-mcp/releases/tag/v1.2.0

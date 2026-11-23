@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import packageJson from "../package.json";
 import { run } from "../src/cli.js";
 
 describe("cortexctrl", () => {
@@ -42,7 +43,7 @@ describe("cortexctrl", () => {
     expect(await run([])).toBe(0);
     expect(stdout()).toContain("alias: cortexctl");
     expect(await run(["--version"])).toBe(0);
-    expect(stdout()).toBe("1.3.4");
+    expect(stdout()).toBe(packageJson.version);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
