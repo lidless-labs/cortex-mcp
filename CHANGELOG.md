@@ -6,8 +6,14 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.4]
+
 ### Fixed
 
+- Restored the published `cortexctrl` and `cortexctl` commands for status, analyzer
+  listing, single-analyzer submission, job lookup and MCP stdio. Analyzer
+  submission requires `CORTEX_MODE=write` and uses the MCP target policy.
+- The CLI and MCP server now report the version from the package manifest.
 - State-changing requests now require `CORTEX_MODE=write`. Destructive deletion
   paths require destructive permission, and additional administration and cleanup
   actions require explicit confirmation.
@@ -65,5 +71,6 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   behind `CORTEX_ALLOW_DESTRUCTIVE`, `CORTEX_FILE_BASE_DIR`-confined file reads,
   and scoped SSL verification.
 
-[Unreleased]: https://github.com/lidless-labs/cortex-mcp/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/lidless-labs/cortex-mcp/compare/v1.3.4...HEAD
+[1.3.4]: https://github.com/lidless-labs/cortex-mcp/compare/v1.2.0...v1.3.4
 [1.2.0]: https://github.com/lidless-labs/cortex-mcp/releases/tag/v1.2.0
