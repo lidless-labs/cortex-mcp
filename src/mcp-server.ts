@@ -1,8 +1,9 @@
 import packageJson from "../package.json";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { BoundedStdioServerTransport } from "./transport.js";
-import { getConfig } from "./config.js";
+import { getConfig, type CortexConfig } from "./config.js";
 import { CortexClient } from "./client.js";
+import { safeCaughtErrorMessage } from "./safe-error.js";
 import { registerAnalyzerTools } from "./tools/analyzers.js";
 import { registerAnalyzerDefinitionTools } from "./tools/analyzer-definitions.js";
 import { registerJobTools } from "./tools/jobs.js";
@@ -15,14 +16,12 @@ import { registerUserTools } from "./tools/users.js";
 import { registerResources } from "./resources.js";
 import { registerPrompts } from "./prompts.js";
 
-export async function serveMcp(): Promise<void> {
-  const config = getConfig();
+interface CortexServerDeps {
+  config?: CortexConfig;
+  client?: CortexClient;
+}
 
-  // SSL verification is handled per-request via a scoped undici dispatcher in
-  // CortexClient (see config.verifySsl). We deliberately do NOT touch the
-  // process-global NODE_TLS_REJECT_UNAUTHORIZED, which would weaken TLS for
-  // every outbound connection in the process.
-
+export function createCortexMcpServer(deps: CortexServerDeps = {}): McpServer {
   const server = new McpServer({
     name: "cortex-mcp",
     version: packageJson.version,
@@ -30,7 +29,7 @@ export async function serveMcp(): Promise<void> {
       "MCP server for Cortex - observable analysis and active response engine by StrangeBee/TheHive Project",
   });
 
-  const client = new CortexClient(config);
+  const client = deps.client ?? new CortexClient(deps.config ?? getConfig());
 
   // Core analysis tools
   registerAnalyzerTools(server, client);
@@ -49,6 +48,11 @@ export async function serveMcp(): Promise<void> {
   registerResources(server, client);
   registerPrompts(server);
 
+  return server;
+}
+
+export async function serveMcp(): Promise<void> {
+  const server = createCortexMcpServer();
   const transport = new BoundedStdioServerTransport();
   // Strip the draft-07 `$schema` the MCP SDK stamps on tool schemas; Anthropic
   // rejects it ("must match JSON Schema draft 2020-12") when the full tool set
@@ -65,4 +69,11 @@ export async function serveMcp(): Promise<void> {
     return __send(message);
   };
   await server.connect(transport);
+}
+
+export function startMcp(): void {
+  void serveMcp().catch((error: unknown) => {
+    console.error("Fatal error:", safeCaughtErrorMessage(error, "Cortex MCP startup failed"));
+    process.exitCode = 1;
+  });
 }

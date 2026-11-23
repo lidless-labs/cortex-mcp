@@ -46,6 +46,17 @@ describe("cortexctrl", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("exports the published library API without starting the MCP server", async () => {
+    vi.stubEnv("CORTEX_URL", undefined);
+    const api = await import("../src/index.js");
+
+    expect(Object.keys(api).sort()).toEqual([
+      "CliGateError", "CortexClient", "createCortexMcpServer", "getConfig",
+      "requireDestructiveCliGate", "requireResponderCliGate", "serveMcp",
+    ]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["responders", "run", "example"],
     ["analyzers", "run", "example", "--file", "sample.bin"],
@@ -71,6 +82,37 @@ describe("cortexctrl", () => {
     });
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith("http://127.0.0.1:9001/api/status",
       expect.objectContaining({ redirect: "error", headers: { Authorization: "Bearer fake-cli-credential" } }));
+  });
+
+  it.each([
+    ["unsupported case", ["--data-type", "HASH", "--data", "example"]],
+    ["file data type", ["--data-type", "file", "--data", "example"]],
+    ["unknown data type", ["--data-type", "custom", "--data", "example"]],
+    ["blank TLP", ["--data-type", "hash", "--data", "example", "--tlp", "   "]],
+    ["hexadecimal PAP", ["--data-type", "hash", "--data", "example", "--pap", "0x1"]],
+    ["exponential TLP", ["--data-type", "hash", "--data", "example", "--tlp", "1e0"]],
+  ])("rejects %s before requesting analysis", async (_label, flags) => {
+    vi.stubEnv("CORTEX_MODE", "write");
+    fetchMock.mockResolvedValueOnce(Response.json(job));
+    expect(await run(["analyzers", "run", "example", ...flags])).toBe(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects over-limit arguments before sending a request", async () => {
+    vi.stubEnv("CORTEX_MODE", "write");
+    const oversized = "a".repeat(65_537);
+    const commands = [
+      ["analyzers", "run", oversized, "--data-type", "hash", "--data", "example"],
+      ["analyzers", "run", "example", "--data-type", "hash", "--data", oversized],
+      ["analyzers", "run", "example", "--data-type", "hash", "--data", "example", "--message", oversized],
+      ["analyzers", "list", "--data-type", oversized],
+      ["jobs", "get", oversized],
+    ];
+    for (const args of commands) {
+      expect(await run(args)).toBe(2);
+      expect(vi.mocked(console.error).mock.calls.at(-2)?.[0]).toContain("65536 characters");
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("filters the analyzer inventory and prints a concise summary", async () => {

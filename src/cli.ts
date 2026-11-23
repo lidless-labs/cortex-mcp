@@ -3,7 +3,10 @@ import { getConfig, type CortexConfig } from "./config.js";
 import { CortexClient } from "./client.js";
 import { serveMcp } from "./mcp-server.js";
 import { safeCaughtErrorMessage } from "./safe-error.js";
+import { OBSERVABLE_DATA_TYPES } from "./targets.js";
 import type { Analyzer, Job } from "./types.js";
+
+const MAX_ARGUMENT_LENGTH = 65_536;
 
 const HELP = `cortexctrl - Cortex observable-analysis control CLI (alias: cortexctl; MCP adapter: cortex-mcp)
 
@@ -75,12 +78,19 @@ function stripJson(args: string[]): { args: string[]; json: boolean } {
 function flagValue(args: string[], index: number, flag: string): string {
   const value = args[index + 1];
   if (!value || value.startsWith("--")) throw new UsageError(`${flag} requires a value`);
+  return boundedArgument(value, flag);
+}
+
+function boundedArgument(value: string, name: string): string {
+  if (value.length > MAX_ARGUMENT_LENGTH) {
+    throw new UsageError(`${name} must be at most ${MAX_ARGUMENT_LENGTH} characters`);
+  }
   return value;
 }
 
 function intFlag(value: string, flag: string, min: number, max: number): number {
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+  if (!/^\d+$/.test(value) || parsed < min || parsed > max) {
     throw new UsageError(`${flag} must be an integer from ${min} to ${max}`);
   }
   return parsed;
@@ -120,6 +130,9 @@ function parseAnalyzerRunOptions(
   }
 
   if (!dataType) throw new UsageError("analyzers run requires --data-type");
+  if (!OBSERVABLE_DATA_TYPES.some(type => type === dataType)) {
+    throw new UsageError(`--data-type must be one of: ${OBSERVABLE_DATA_TYPES.join(", ")}`);
+  }
   if (!data) throw new UsageError("analyzers run requires --data");
   return { kind: "analyzers run", json, analyzerId, dataType, data, tlp, pap, message };
 }
@@ -153,14 +166,14 @@ function parseArgs(rawArgs: string[]): Parsed {
     if (!third || third === "." || third === ".." || third.startsWith("--")) {
       throw new UsageError("analyzers run requires an analyzer id");
     }
-    return parseAnalyzerRunOptions(third, rest, json);
+    return parseAnalyzerRunOptions(boundedArgument(third, "Analyzer ID"), rest, json);
   }
   if (first === "jobs" && second === "get") {
     if (!third || third === "." || third === ".." || third.startsWith("--")) {
       throw new UsageError("jobs get requires a job id");
     }
     if (rest.length > 0) throw new UsageError(`Unknown jobs get option: ${rest[0]}`);
-    return { kind: "jobs get", json, jobId: third };
+    return { kind: "jobs get", json, jobId: boundedArgument(third, "Job ID") };
   }
 
   throw new UsageError(`Unknown command: ${args.join(" ")}`);
