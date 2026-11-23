@@ -313,3 +313,25 @@ it("reports an error when every bulk report request fails", async () => {
   expect(result.isError).toBe(true);
   expect(result.content[0].text).toContain("Example report failure");
 });
+
+it.each(["Failure", "Deleted", "Success", "InProgress"] as const)(
+  "reports failed bulk jobs alongside a %s job",
+  async (secondStatus) => {
+    const client = new CortexClient({ ...config, mode: "write" });
+    const analyzers = ["first", "second"].map(id => ({
+      id, name: id, version: "1", description: "example", dataTypeList: ["hash"],
+    }));
+    vi.spyOn(client, "listAnalyzers").mockResolvedValue(analyzers);
+    vi.spyOn(client, "runAnalyzer").mockImplementation(async id => ({ id, status: "Waiting" }));
+    vi.spyOn(client, "waitAndGetReport").mockImplementation(async id => ({
+      id, status: id === "first" ? "Failure" : secondStatus,
+    }));
+    const analyze = capture(registerBulkTools, client).handlers.get("cortex_analyze_observable")!;
+
+    const result = await analyze({ data: "a".repeat(64), dataType: "hash", fanOut: true, tlp: 2, pap: 2, timeout: 1 });
+
+    const allFailed = secondStatus === "Failure" || secondStatus === "Deleted";
+    expect(result.isError).toBe(allFailed);
+    expect(result.content[0].text).toContain(`"analyzersFailed":${allFailed ? 2 : 1}`);
+  },
+);
