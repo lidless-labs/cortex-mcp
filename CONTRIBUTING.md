@@ -27,17 +27,18 @@ cortex-mcp is a Model Context Protocol (MCP) server that exposes [Cortex](https:
 ```bash
 git clone https://github.com/lidless-labs/cortex-mcp.git
 cd cortex-mcp
-npm install
-npm run build
-npm test
+npm ci
+./scripts/verify
 ```
 
 `npm run dev` runs the server with `tsx watch` for a fast edit loop. `npm run lint` is a `tsc --noEmit` type check.
 
+CI scans tracked files with Content Guard's public repository policy. To run the same check locally, install Content Guard 0.4.0 and run `content-guard-git --all-tracked --allow-values-from .github/content-guard-allow.json`.
+
 To smoke-test against a real Cortex instance:
 
 ```bash
-CORTEX_URL=http://cortex.example.com:9001 \
+CORTEX_URL=https://cortex.example.com:9001 \
 CORTEX_API_KEY=your-key \
 CORTEX_SUPERADMIN_KEY=your-superadmin-key \
 npx vitest run tests/integration.test.ts

@@ -2,19 +2,9 @@ name: CI & Publish
 
 on:
   push:
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'LICENSE'
-      - '.gitignore'
     branches: [main]
     tags: ["v*"]
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'LICENSE'
-      - '.gitignore'
     branches: [main]
 
 permissions:
@@ -24,11 +14,23 @@ env:
   NODE_OPTIONS: --max-old-space-size=2048
 
 jobs:
+  content-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: escoffier-labs/content-guard
+          ref: d93468bddaa243d8364d6ecc3d7ec284ae227817 # v0.4.0
+          path: .content-guard
+          persist-credentials: false
+      - run: PYTHONPATH=.content-guard/src python3 -m content_guard.git_scan --all-tracked --policy .content-guard/policies/public-repo.json --allow-values-from .github/content-guard-allow.json
+
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [20, 22]
+        node-version: [20, 22, 24, 26]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -36,12 +38,10 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run build
-      - run: npm test
+      - run: ./scripts/verify
 
   publish:
-    needs: test
+    needs: [content-guard, test]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -49,19 +49,24 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+      - name: Validate the release tag
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "Tag $GITHUB_REF_NAME must match package version v$version" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor HEAD refs/remotes/origin/main; then
+            echo "Release tags must point to commits on main" >&2
+            exit 1
+          fi
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
-      - name: Publish if version is new
-        run: |
-          PKG=$(node -p "require('./package.json').name")
-          VER=$(node -p "require('./package.json').version")
-          if npm view "$PKG@$VER" version 2>/dev/null | grep -qx "$VER"; then
-            echo "$PKG@$VER already on npm; skipping publish"
-          else
-            npm publish --provenance
-          fi
+      - run: npm publish --provenance

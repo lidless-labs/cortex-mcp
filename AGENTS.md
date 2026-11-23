@@ -13,3 +13,13 @@ Models used:
 ```
 
 Every agent-written review comment and review summary on Solomon's behalf also includes `Review by <model> via <harness> in <client>`.
+
+## Working on cortex-mcp
+
+Run `npm ci` after checkout and `./scripts/verify` before submitting changes. The script runs the type checker, the offline tests and the build in the same order as CI.
+
+The MCP entry point lives in `src/index.ts`. `src/client.ts` wraps the Cortex API. Tool modules live in `src/tools/` and are registered by the entry point. Update the README tool table and count when adding or removing a tool.
+
+Keep ordinary tests offline with mocks or loopback servers. Use placeholders in examples. Live tests require an explicitly configured disposable Cortex instance. Test mutations also require `CORTEX_TEST_MUTATIONS=true`, `CORTEX_MODE=write` and `CORTEX_ALLOW_DESTRUCTIVE=1`.
+
+Preserve the read-only default, `CORTEX_MODE=write` for state changes, `CORTEX_ALLOW_DESTRUCTIVE=1` and explicit confirmation for destructive tools, `CORTEX_FILE_BASE_DIR` for local file analysis, and `CORTEX_MAX_FANOUT` for bulk analysis. Apply API access checks in the client so both tools and command-line entry points enforce them.
