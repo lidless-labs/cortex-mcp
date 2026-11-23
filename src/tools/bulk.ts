@@ -16,11 +16,11 @@ function detectDataType(value: string): string | null {
   // IPv6 (simplified check)
   if (/^[0-9a-fA-F:]{2,39}(\/\d{1,3})?$/.test(trimmed) && trimmed.includes(":")) return "ip";
 
-  // Email
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return "mail";
-
   // URL
   if (/^https?:\/\//i.test(trimmed)) return "url";
+
+  // Email
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return "mail";
 
   // MD5
   if (/^[a-fA-F0-9]{32}$/.test(trimmed)) return "hash";

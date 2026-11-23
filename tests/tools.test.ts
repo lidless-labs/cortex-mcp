@@ -473,6 +473,24 @@ describe("Bulk Tools", () => {
   });
 
   describe("cortex_analyze_observable", () => {
+    it("auto-detects an HTTP URL containing an at sign", async () => {
+      vi.mocked(client.listAnalyzers).mockResolvedValue(mockAnalyzers);
+      vi.mocked(client.runAnalyzer).mockResolvedValue(mockJob);
+      vi.mocked(client.waitAndGetReport).mockResolvedValue(mockJobReport);
+      const data = "https://example.com/@alice.example.com";
+
+      const result = await tools.get("cortex_analyze_observable")!({
+        data, analyzers: ["URLhaus"], tlp: 2, pap: 2, timeout: 60,
+      });
+
+      expect(parseData(result.content[0].text).observable).toMatchObject({
+        dataType: "url", autoDetected: true,
+      });
+      expect(client.runAnalyzer).toHaveBeenCalledWith("URLhaus_2_0", {
+        data, dataType: "url", tlp: 2, pap: 2,
+      });
+    });
+
     it("should run all applicable analyzers and aggregate results", async () => {
       (client as any).listAnalyzers.mockResolvedValue(mockAnalyzers);
 
