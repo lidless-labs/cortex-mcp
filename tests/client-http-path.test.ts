@@ -1,9 +1,8 @@
 /**
  * Offline harness for CortexClient's real fetch/undici request path.
  *
- * Unlike tests/client.test.ts (which stubs global fetch), these exercises go
- * through Node's native fetch backed by undici against a local HTTP server so
- * timeout aborts and response handling stay wired to the production client.
+ * These tests exercise both production fetch paths against a local HTTP
+ * server, including where CortexClient uses a scoped Undici dispatcher.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { AddressInfo, type Socket } from "node:net";
@@ -144,7 +143,7 @@ describe("CortexClient HTTP request path (offline)", () => {
       );
     });
 
-    it("maps undici fetch abort to a public timeout error for POST text endpoints", async () => {
+    it.each([true, false])("maps POST text abort to a timeout error with verifySsl=%s", async (verifySsl) => {
       const timeoutMs = 80;
 
       await withMockCortex(
@@ -156,7 +155,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, timeoutMs), { put: async () => ({ reference: "store:example" }) });
+          const client = new CortexClient({ ...baseConfig(baseUrl, timeoutMs), verifySsl }, { put: async () => ({ reference: "store:example" }) });
 
           await expect(client.renewUserKey("test-user")).rejects.toThrow(
             `Cortex API timeout after ${timeoutMs}ms`,
@@ -165,7 +164,7 @@ describe("CortexClient HTTP request path (offline)", () => {
       );
     });
 
-    it("maps undici fetch abort to a public timeout error for multipart uploads", async () => {
+    it.each([true, false])("maps multipart upload abort to a timeout error with verifySsl=%s", async (verifySsl) => {
       const timeoutMs = 80;
 
       await withMockCortex(
@@ -177,7 +176,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, timeoutMs), { put: async () => ({ reference: "store:example" }) });
+          const client = new CortexClient({ ...baseConfig(baseUrl, timeoutMs), verifySsl });
 
           await expect(
             client.runAnalyzerWithFile(
@@ -503,7 +502,7 @@ describe("CortexClient HTTP request path (offline)", () => {
       );
     });
 
-    it("uses the superadmin bearer token for text endpoints", async () => {
+    it.each([true, false])("uses the superadmin bearer token for text endpoints with verifySsl=%s", async (verifySsl) => {
       await withMockCortex(
         {
           "/api/user/test-user/key/renew": (_req, res) => {
@@ -511,7 +510,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl, requests }) => {
-          const client = new CortexClient(baseConfig(baseUrl, 5_000), { put: async () => ({ reference: "store:example" }) });
+          const client = new CortexClient({ ...baseConfig(baseUrl, 5_000), verifySsl }, { put: async () => ({ reference: "store:example" }) });
           const key = await client.renewUserKey("test-user");
 
           expect(key.reference).toBe("store:example");
@@ -525,7 +524,7 @@ describe("CortexClient HTTP request path (offline)", () => {
   });
 
   describe("public HTTP error mapping (runAnalyzerWithFile)", () => {
-    it("maps non-ok multipart responses to Cortex API error without response body", async () => {
+    it.each([true, false])("maps non-ok multipart responses without exposing the body with verifySsl=%s", async (verifySsl) => {
       await withMockCortex(
         {
           "/api/analyzer/test-analyzer/run": (_req, res) => {
@@ -533,7 +532,7 @@ describe("CortexClient HTTP request path (offline)", () => {
           },
         },
         async ({ baseUrl }) => {
-          const client = new CortexClient(baseConfig(baseUrl, 5_000), { put: async () => ({ reference: "store:example" }) });
+          const client = new CortexClient({ ...baseConfig(baseUrl, 5_000), verifySsl });
 
           await expect(
             client.runAnalyzerWithFile(
@@ -580,6 +579,61 @@ describe("CortexClient HTTP request path (offline)", () => {
   });
 
   describe("undici dispatcher path", () => {
+    it("rejects redirects before sending a request to the redirect target", async () => {
+      await withMockCortex(
+        {
+          "/api/status": (_req, res) => {
+            res.writeHead(302, { Location: "/redirect-target" });
+            res.end();
+          },
+          "/redirect-target": (_req, res) => json(res, 200, {}),
+        },
+        async ({ baseUrl, requests }) => {
+          const client = new CortexClient({ ...baseConfig(baseUrl, 5_000), verifySsl: false });
+          await expect(client.getStatus()).rejects.toThrow("fetch failed");
+          expect(requests.map((request) => request.url)).toEqual(["/api/status"]);
+        },
+      );
+    });
+
+    it("sends metadata and binary attachment bytes in a scoped multipart upload", async () => {
+      const content = Buffer.from([0x00, 0xff, 0x0d, 0x0a, 0x80]);
+      const job = { id: "job-1", status: "Waiting" };
+      let form: FormData | undefined;
+
+      await withMockCortex(
+        {
+          "/api/analyzer/test-analyzer/run": async (req, res) => {
+            const chunks: Buffer[] = [];
+            for await (const chunk of req) chunks.push(chunk);
+            form = await new Response(Buffer.concat(chunks), {
+              headers: { "Content-Type": req.headers["content-type"] ?? "" },
+            }).formData();
+            json(res, 200, job);
+          },
+        },
+        async ({ baseUrl, requests }) => {
+          const client = new CortexClient({ ...baseConfig(baseUrl, 5_000), verifySsl: false });
+          await expect(client.runAnalyzerWithFile(
+            "test-analyzer",
+            { content, filename: "sample.bin", contentType: "application/octet-stream" },
+            { tlp: 2, pap: 1, message: "binary sample" },
+          )).resolves.toEqual(job);
+
+          expect(requests[0].headers.authorization).toBe("Bearer org-api-key");
+          const metadata = form?.get("_json") as File;
+          expect(metadata.type).toBe("application/json");
+          expect(JSON.parse(await metadata.text())).toEqual({
+            dataType: "file", tlp: 2, pap: 1, message: "binary sample",
+          });
+          const attachment = form?.get("attachment") as File;
+          expect(attachment.name).toBe("sample.bin");
+          expect(attachment.type).toBe("application/octet-stream");
+          expect(Buffer.from(await attachment.arrayBuffer())).toEqual(content);
+        },
+      );
+    });
+
     it("succeeds over plain HTTP when verifySsl is disabled", async () => {
       await withMockCortex(
         {
