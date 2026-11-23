@@ -14,6 +14,11 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   listing, single-analyzer submission, job lookup and MCP stdio. Analyzer
   submission requires `CORTEX_MODE=write` and uses the MCP target policy.
 - The CLI and MCP server now report the version from the package manifest.
+- Fixed the npm quickstart for packages with multiple commands.
+- Excluded jobs with unknown timestamps from age-based cleanup.
+- Fixed HTTP requests using a custom dispatcher on Node 26.
+- Classified HTTP URLs before email addresses and counted failed analyzer jobs in bulk results.
+- Buffered complete stdio frames and accepted CRLF at the message size limit.
 - State-changing requests now require `CORTEX_MODE=write`. Destructive deletion
   paths require destructive permission, and additional administration and cleanup
   actions require explicit confirmation.
