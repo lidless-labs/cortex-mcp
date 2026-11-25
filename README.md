@@ -67,7 +67,9 @@ Add this to your MCP client config (this example is Claude Desktop's `claude_des
 }
 ```
 
-The [`thehive-cortex-mcp`](https://www.npmjs.com/package/thehive-cortex-mcp) package provides the `cortex-mcp` command. The examples name that command explicitly because the package exposes multiple commands. Set `CORTEX_SUPERADMIN_KEY` if you need organization and user management tools.
+The published [`thehive-cortex-mcp`](https://www.npmjs.com/package/thehive-cortex-mcp) package provides several commands. The examples select `cortex-mcp` to start the MCP server. Set `CORTEX_SUPERADMIN_KEY` if you need organization and user management tools.
+
+For shell use, run `npx -y -p thehive-cortex-mcp cortexctrl help`. The `cortexctl` alias runs the same CLI. In a source build, set `CORTEX_MODE=write` before using the CLI to submit analysis.
 
 ## Usage
 

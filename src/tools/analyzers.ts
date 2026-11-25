@@ -1,4 +1,5 @@
 import { MAX_FILE_BYTES, readAnalysisFile, formatCortexData } from "../safety.js";
+import { OBSERVABLE_DATA_TYPES } from "../targets.js";
 import { z } from "zod";
 import { realpath } from "node:fs/promises";
 import { basename, resolve, sep } from "node:path";
@@ -35,19 +36,6 @@ async function resolveContainedFilePath(
 
   return realCandidate;
 }
-
-const DATA_TYPES = [
-  "ip",
-  "domain",
-  "url",
-  "fqdn",
-  "hash",
-  "mail",
-  "filename",
-  "registry",
-  "regexp",
-  "other",
-] as const;
 
 export function registerAnalyzerTools(
   server: McpServer,
@@ -148,7 +136,7 @@ export function registerAnalyzerTools(
     "Submit an observable to a specific analyzer for analysis",
     {
       analyzerId: z.string().max(65_536).describe("The analyzer ID to run"),
-      dataType: z.enum(DATA_TYPES).describe("The observable data type"),
+      dataType: z.enum(OBSERVABLE_DATA_TYPES).describe("The observable data type"),
       data: z
         .string().max(65_536)
         .describe("The observable value (IP, domain, hash, URL, etc.)"),
@@ -215,7 +203,7 @@ export function registerAnalyzerTools(
     "Run an analyzer by name instead of ID (convenience wrapper)",
     {
       analyzerName: z.string().max(65_536).describe("The analyzer name to search for"),
-      dataType: z.enum(DATA_TYPES).describe("The observable data type"),
+      dataType: z.enum(OBSERVABLE_DATA_TYPES).describe("The observable data type"),
       data: z.string().max(65_536).describe("The observable value"),
       tlp: z
         .number()

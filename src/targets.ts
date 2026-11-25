@@ -1,6 +1,10 @@
 import { Resolver } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
 
+export const OBSERVABLE_DATA_TYPES = [
+  "ip", "domain", "url", "fqdn", "hash", "mail", "filename", "registry", "regexp", "other",
+] as const;
+
 const globalIpv6 = new BlockList();
 globalIpv6.addSubnet("2000::", 3, "ipv6");
 const specialIpv6 = new BlockList();
@@ -24,9 +28,10 @@ function publicAddress(address: string): boolean {
 
 /** Submission-time validation supplements the operator's worker egress policy. */
 export async function validateObservableTarget(type: string, data: string, allowPrivate: boolean): Promise<void> {
-  if (!["url", "ip", "domain", "fqdn"].includes(type)) return;
+  const dataType = type.trim().toLowerCase();
+  if (!["url", "ip", "domain", "fqdn"].includes(dataType)) return;
   let hostname = data;
-  if (type === "url") {
+  if (dataType === "url") {
     let url: URL;
     try { url = new URL(data); }
     catch { throw new Error("Observable must be an absolute HTTP or HTTPS URL"); }
@@ -37,7 +42,7 @@ export async function validateObservableTarget(type: string, data: string, allow
   }
   hostname = hostname.replace(/^\[|\]$/g, "");
   if (allowPrivate) return;
-  if (type === "ip") {
+  if (dataType === "ip") {
     // CIDR observables are valid IP data: check the base address and prefix length.
     const cidr = /^([^/]+)\/(\d{1,3})$/.exec(hostname);
     if (cidr) {
@@ -50,7 +55,7 @@ export async function validateObservableTarget(type: string, data: string, allow
     if (!publicAddress(hostname)) throw new Error("Private or special-purpose targets require CORTEX_ALLOW_PRIVATE_TARGETS=true");
     return;
   }
-  if (type === "ip" || !/^(?=.{1,253}\.?$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.?$/i.test(hostname)) {
+  if (dataType === "ip" || !/^(?=.{1,253}\.?$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.?$/i.test(hostname)) {
     throw new Error("Invalid observable network target");
   }
   const resolver = new Resolver({ timeout: 2000, tries: 1 });

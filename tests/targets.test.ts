@@ -5,6 +5,11 @@ const config = { url: "https://cortex.example.com", apiKey: "example", verifySsl
 const submit = (client: CortexClient, data: string, dataType = "url") => client.runAnalyzer("example", { data, dataType, tlp: 2, pap: 2 });
 afterEach(() => vi.restoreAllMocks());
 describe("observable targets", () => {
+  it("validates network targets regardless of type casing and surrounding whitespace", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response('{"id":"example"}'));
+    await expect(submit(new CortexClient(config), "invalid-address", " IP ")).rejects.toThrow("Invalid observable network target");
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it.each([
     `http://${[127, 0, 0, 1].join(".")}/`,
     `http://${[169, 254, 169, 254].join(".")}/`,
